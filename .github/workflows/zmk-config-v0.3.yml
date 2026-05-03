@@ -1,0 +1,80 @@
+name: Test with ZMK v0.3
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  schedule:
+    # 20:00 JST every Friday (11:00 UTC)
+    - cron: "0 11 * * 5"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: nixbuild/nix-quick-install-action@v34
+      - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 0
+      - name: Build nix env
+        run: nix develop ./nix
+      # Clone before cache to calculate cache key
+      - name: Clone zmk-config
+        run: |
+          git config --global --add safe.directory ${{ github.workspace }}
+          west init -m https://github.com/cormoran/zmk-config-template --mf config/west-workspace.yml --mr v0.3-branch
+        shell: nix develop ./nix --command bash -e {0}
+      - name: Cache west modules
+        uses: actions/cache@v4
+        continue-on-error: true
+        env:
+          cache_name: cache-west-modules
+        with:
+          path: |
+            modules
+            optional
+            zephyr
+            zmk
+          key: ${{ runner.os }}-build-${{ env.cache_name }}-${{ hashFiles('zmk-config-template/config/west*.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-build-${{ env.cache_name }}-
+      - name: Update west dependencies
+        run: |
+          west update --narrow
+          west zephyr-export
+        shell: nix develop ./nix --command bash -e {0}
+      - name: Build
+        run: west zmk-build ./zmk-config-template -q
+        shell: nix develop ./nix --command bash -e {0}
+      - name: Clone zmk-module
+        run: |
+          rm -r .west
+          west init -m https://github.com/cormoran/zmk-module-template --mf west/west-test-workspace.yml --mr v0.3-branch
+          west update --narrow
+          west zephyr-export
+        shell: nix develop ./nix --command bash -e {0}
+      - name: Build zmk-module
+        run: cd zmk-module-template && python3 -m unittest
+        shell: nix develop ./nix --command bash -e {0}
+
+  # Avoid deactivating scheduled runs by keeping the workflow active
+  keepalive:
+    if: github.event_name == 'schedule'
+    permissions:
+      actions: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Re-enable workflow to avoid deactivating scheduled runs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_REPO: ${{ github.repository }}
+        run: |
+          gh workflow enable zmk-config-v0.3.yml
