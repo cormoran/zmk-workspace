@@ -1,0 +1,4 @@
+interface:
+  display_name: "Build ZMK Config"
+  short_description: "Build and test ZMK configs with nix"
+  default_prompt: "Use $build-zmk-config to build this ZMK config in the nix workspace."
