@@ -1,110 +1,120 @@
 ---
 name: build-zmk-config
-description: Build, test, and debug ZMK config repositories using this repo's Nix-based Zephyr/ZMK west workspace. Use when Codex needs to clone or initialize a zmk-config, choose the correct west workspace layout, run west update/zephyr-export, build firmware with west zmk-build or west build, enable debug snippets such as zmk-usb-logging, verify generated .uf2 artifacts, or diagnose ZMK build failures.
+description: Build, test, and debug ZMK config repositories using this repo's Nix-based Zephyr/ZMK west workspace. Use when Codex needs to clone or initialize a zmk-config, choose the correct west workspace layout, interpret build.yaml, build firmware with west zmk-build or manually assembled west build commands, enable debug snippets such as zmk-usb-logging or studio-rpc-usb-uart, verify generated .uf2 artifacts, or diagnose ZMK build failures.
 ---
 
 # Build ZMK Config
 
-## Core Workflow
+## Workflow
 
-Prefer the clone-root layout for parallel work: clone each zmk-config into its own directory, make that clone the west topdir, and keep dependencies under that clone. Use the repository-root layout only when the config explicitly expects the surrounding zmk-workspace directory to be the west topdir.
-
-Use this workspace's Nix devShell for every west command:
+Use this workspace's Nix devShell for all west commands:
 
 ```bash
-nix --extra-experimental-features 'nix-command flakes' develop /path/to/zmk-workspace/nix --command <command>
+nix --extra-experimental-features 'nix-command flakes' develop /path/to/zmk-workspace/nix --command bash -lc '<commands>'
 ```
 
-If the environment already enables nix-command/flakes, the extra flag is harmless. If sandboxing blocks `~/.cache/nix`, set `XDG_CACHE_HOME=/tmp/nix-cache`; otherwise use the normal cache.
+Prefer a clone-root west workspace for parallel work: clone each zmk-config into its own directory and make that clone the west topdir. Use a repository-root workspace only when the config or zmk-workspace instructions require it. Read `references/west-layouts.md` when the layout is unclear.
 
-## Fast Path
+## Initialize
 
-Use the bundled helper for the common clone-root flow:
+For clone-root configs with `config/west-isolated.yml`:
 
 ```bash
-skills/build-zmk-config/scripts/build_zmk_config.sh \
-  --repo https://github.com/owner/zmk-config.git \
-  --workdir .work
+cd <zmk-config>
+west init -l config --mf west-isolated.yml
+west update --narrow
+west zephyr-export
 ```
 
-For an already-cloned config:
+For official-style configs such as `zmkfirmware/unified-zmk-config-template`, where `config/west.yml` contains `self: path: config`:
 
 ```bash
-skills/build-zmk-config/scripts/build_zmk_config.sh \
-  --config-dir /path/to/zmk-config
+cd <zmk-config>
+west init -l config
+west update --narrow
+west zephyr-export
 ```
 
-Pass extra `west zmk-build` flags after `--`, for example:
-
-```bash
-skills/build-zmk-config/scripts/build_zmk_config.sh \
-  --config-dir /path/to/zmk-config \
-  -- -S zmk-usb-logging
-```
-
-The helper intentionally targets configs that provide `zmk-west-commands` and `build.yaml`. If `west zmk-build` is not available, use the manual fallback below.
-
-## Layout Decision
-
-Read `references/west-layouts.md` when the manifest layout is unclear.
-
-Clone-root indicators:
-- `config/west-isolated.yml`
-- `config/west.yml` importing `west-isolated.yml`
-- README or CI uses `west init -l config` or `west init -l config --mf west-isolated.yml`
-- Dependencies are expected under `<config-repo>/dependencies`
-
-Repository-root indicators:
-- README for this zmk-workspace says `west init -m <config-repo> --mf <manifest>`
-- The config only provides a root manifest or `config/west-workspace.yml`
-- Dependencies are expected as siblings of the config repo
-
-Be careful: `cd <config-repo> && west init -l . --mf config/west-workspace.yml` can create `.west` in the parent directory, not in the clone. Do not use it when the requested layout is clone-root.
-
-## Manual Clone-Root Build
-
-For configs like `cormoran/zmk-keyboard-abyss-tester-xiao`:
-
-```bash
-git clone https://github.com/cormoran/zmk-keyboard-abyss-tester-xiao.git .work/zmk-keyboard-abyss-tester-xiao
-cd .work/zmk-keyboard-abyss-tester-xiao
-nix --extra-experimental-features 'nix-command flakes' develop /path/to/zmk-workspace/nix --command bash -lc '
-  west init -l config --mf west-isolated.yml
-  west update --narrow
-  west zephyr-export
-  west zmk-build -d ./build -q
-'
-```
-
-Verify:
+Verify clone-root initialization:
 
 ```bash
 west topdir
-find build -type f -path '*/zephyr/zmk.uf2' -print
 ```
 
-`west topdir` must be the cloned config directory for clone-root builds.
+It must print the cloned config directory.
 
-## Manual Fallback Without zmk-build
+## Choose Build Method
 
-For official-style configs without `zmk-west-commands`, read `build.yaml` and run one `west build` per board/shield entry:
+After `west update`, choose the build method from the workspace:
+
+- Use `west zmk-build` when the manifest imports `zmk-west-commands` or `west help zmk-build` works. This command understands `build.yaml`.
+- Use manual `west build` when `zmk-build` is unavailable, including the official unified template.
+
+With `zmk-build`:
 
 ```bash
-west build -d build/<artifact-name> -b <board> -- \
-  -DSHIELD=<shield> \
+west zmk-build -d ./build -q
+west zmk-build -d ./build -q -S zmk-usb-logging
+```
+
+Without `zmk-build`, build each target from `build.yaml` yourself. Locate the ZMK app from west instead of assuming a fixed path:
+
+```bash
+zmk_app="$(west list zmk -f '{abspath}')/app"
+west build -s "$zmk_app" -d "build/<artifact>" -b "<board>" [ -S "<snippet>" ] -- \
+  -DSHIELD="<shield>" \
   -DZMK_CONFIG="$(pwd)/config" \
   <cmake-args>
 ```
 
-If an entry has `snippet`, add `-S <snippet>` before `--`. If it has no shield, omit `-DSHIELD`.
+Important details:
+- `-s "$zmk_app"` is required when the current directory is only a config repo and has no `CMakeLists.txt`.
+- Omit `-DSHIELD` when the build target has no shield.
+- Put Zephyr snippets before `--`; put CMake arguments after `--`.
+- Use a distinct `-d` directory per target.
+- Use `-p always` only when intentionally rebuilding an existing build directory from scratch.
+
+## Expand build.yaml
+
+Read `build.yaml` before building:
+
+- Top-level `board: [...]` and `shield: [...]` form a Cartesian product.
+- Top-level `include:` entries are explicit targets and can add `snippet`, `cmake-args`, `artifact`, or `artifact-name`.
+- Prefer `artifact-name` or `artifact` for the build directory name when present; otherwise use `<board>__<shield>` or `<board>`.
+- Keep both `artifact` and `artifact-name` in mind because different templates and helpers use different spellings.
+
+Example for the official unified template after enabling:
+
+```yaml
+board: [ "nice_nano" ]
+shield: [ "corne_left", "corne_right" ]
+```
+
+Manual commands:
+
+```bash
+zmk_app="$(west list zmk -f '{abspath}')/app"
+west build -s "$zmk_app" -d build/nice_nano__corne_left -b nice_nano -- \
+  -DSHIELD=corne_left \
+  -DZMK_CONFIG="$(pwd)/config"
+west build -s "$zmk_app" -d build/nice_nano__corne_right -b nice_nano -- \
+  -DSHIELD=corne_right \
+  -DZMK_CONFIG="$(pwd)/config"
+```
 
 ## Validation
 
-A build is successful only after all expected targets finish and every expected firmware artifact exists. For `west zmk-build`, count the targets reported from `build.yaml` and verify matching `build/*/zephyr/zmk.uf2` files.
+A build is successful only after every expected target finishes and every expected firmware artifact exists:
 
-When the user asks for tests, run repository tests that exist in addition to firmware builds:
+```bash
+find <build-dir> -type f -path '*/zephyr/zmk.uf2' -print
+```
+
+For `west zmk-build`, compare the target count printed from `build.yaml` with the number of generated `.uf2` files. For manual builds, check each target's build directory.
+
+When tests are requested, run repository tests that exist in addition to firmware builds:
 - `python -m unittest` for zmk modules or configs with Python tests
 - `west twister` only when the config/module provides Zephyr tests and the needed platform is clear
-- this skill's own validation with `quick_validate.py` after editing the skill
+- this skill's own `quick_validate.py` after editing the skill
 
-Report exact failing target names, board/shield/snippet values, and the first actionable CMake/Kconfig/devicetree error.
+Report exact target names, board/shield/snippet values, artifact paths, and the first actionable CMake/Kconfig/devicetree error when a build fails.

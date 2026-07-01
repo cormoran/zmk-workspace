@@ -18,6 +18,22 @@ west zmk-build -d ./build -q
 
 If `config/west.yml` imports `west-isolated.yml`, `west init -l config` is also valid.
 
+Official-style clone-root configs may only provide `config/west.yml` with:
+
+```yaml
+self:
+  path: config
+```
+
+For those, use:
+
+```bash
+cd <zmk-config>
+west init -l config
+west update --narrow
+west zephyr-export
+```
+
 Expected shape:
 
 ```text
@@ -30,6 +46,8 @@ Expected shape:
 ```
 
 Use `west topdir` after init. It must print `<zmk-config>`.
+
+If the config lacks `zmk-west-commands`, build manually with `west build -s "$(west list zmk -f '{abspath}')/app" ...`.
 
 ## Repository-root layout
 
