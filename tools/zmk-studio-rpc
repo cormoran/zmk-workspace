@@ -1,0 +1,218 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import pathlib
+import sys
+
+from google.protobuf import json_format
+
+from zmk_studio_rpc import BleTransport, ProtoBundle, PyUSBCDCTransport, SerialTransport, StudioClient
+from zmk_studio_rpc.client import StudioRPCMetaError, SubsystemNotFoundError
+from zmk_studio_rpc.proto import DEFAULT_WORKSPACE, find_proto_file
+from zmk_studio_rpc.transport import TransportTimeoutError, serial_port_candidates
+
+
+DEVTOOL_ID = "cormoran__devtool"
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Talk to ZMK Studio RPC devices.")
+    parser.add_argument("--workspace", default=str(DEFAULT_WORKSPACE), help="ZMK workspace to scan")
+    parser.add_argument("--transport", choices=("serial", "ble", "pyusb"), default="serial")
+    parser.add_argument("--port", default="auto", help="Serial port, or 'auto'")
+    parser.add_argument("--baudrate", type=int, default=115200)
+    parser.add_argument("--ble-address", help="BLE device address")
+    parser.add_argument("--usb-vid", default="0x1d50")
+    parser.add_argument("--usb-pid", default="0x615e")
+    parser.add_argument("--usb-data-interface", type=int)
+    parser.add_argument("--timeout", type=float, default=5.0)
+
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers.add_parser("list-ports", help="List local serial port candidates")
+    subparsers.add_parser("info", help="Read core device info")
+    subparsers.add_parser("lock-state", help="Read core Studio lock state")
+    subparsers.add_parser("lock", help="Lock Studio on the device")
+    subparsers.add_parser("keymap", help="Read official keymap RPC")
+    subparsers.add_parser("custom-list", help="List custom RPC subsystems, if supported")
+    subparsers.add_parser("probe", help="Run official RPC and safe custom RPC checks")
+
+    custom_call = subparsers.add_parser("custom-call", help="Call any custom subsystem with a proto")
+    custom_call.add_argument("--identifier", required=True)
+    custom_call.add_argument("--proto", required=True, type=pathlib.Path)
+    custom_call.add_argument("--request-type", required=True, help="Example: cormoran.devtool.Request")
+    custom_call.add_argument("--response-type", required=True, help="Example: cormoran.devtool.Response")
+    custom_call.add_argument("--json", required=True, help="Request JSON in protobuf JSON format")
+
+    devtool = subparsers.add_parser("devtool", help="Convenience calls for cormoran__devtool")
+    devtool.add_argument(
+        "operation",
+        choices=("get-lock-state", "unlock", "lock", "reboot", "bootloader"),
+    )
+
+    args = parser.parse_args(argv)
+
+    if args.command == "list-ports":
+        return cmd_list_ports()
+
+    custom_protos = []
+    if args.command == "custom-call":
+        custom_protos.append(args.proto)
+    elif args.command in {"devtool", "probe"}:
+        try:
+            custom_protos.append(find_proto_file(args.workspace, "proto/cormoran/devtool/devtool.proto"))
+        except Exception:
+            if args.command == "devtool":
+                raise
+
+    protos = ProtoBundle.from_workspace(args.workspace, custom_proto_files=custom_protos)
+    transport = build_transport(args)
+
+    with StudioClient(transport, protos, response_timeout=args.timeout) as client:
+        if args.command == "info":
+            return cmd_info(client)
+        if args.command == "lock-state":
+            return cmd_lock_state(client)
+        if args.command == "lock":
+            client.lock()
+            print("locked")
+            return 0
+        if args.command == "keymap":
+            print(json_format.MessageToJson(client.get_keymap(), preserving_proto_field_name=True))
+            return 0
+        if args.command == "custom-list":
+            return cmd_custom_list(client)
+        if args.command == "custom-call":
+            return cmd_custom_call(client, protos, args)
+        if args.command == "devtool":
+            return cmd_devtool(client, protos, args.operation)
+        if args.command == "probe":
+            return cmd_probe(client, protos)
+
+    return 0
+
+
+def build_transport(args: argparse.Namespace):
+    if args.transport == "serial":
+        return SerialTransport(port=args.port, baudrate=args.baudrate)
+    if args.transport == "pyusb":
+        return PyUSBCDCTransport(
+            vid=int(str(args.usb_vid), 0),
+            pid=int(str(args.usb_pid), 0),
+            data_interface=args.usb_data_interface,
+        )
+    if not args.ble_address:
+        raise SystemExit("--ble-address is required for --transport ble")
+    return BleTransport(address=args.ble_address, response_timeout=args.timeout)
+
+
+def cmd_list_ports() -> int:
+    ports = serial_port_candidates()
+    if not ports:
+        print("No serial ports found")
+        return 1
+    for port in ports:
+        print(port)
+    return 0
+
+
+def cmd_info(client: StudioClient) -> int:
+    info = client.get_device_info()
+    print(f"name: {info.name}")
+    print(f"serial_number_hex: {bytes(info.serial_number).hex()}")
+    return 0
+
+
+def cmd_lock_state(client: StudioClient) -> int:
+    state = client.get_lock_state()
+    print(client.protos.core.LockState.Name(state))
+    return 0
+
+
+def cmd_custom_list(client: StudioClient) -> int:
+    subsystems = client.list_custom_subsystems()
+    if not subsystems:
+        print("No custom RPC subsystems reported")
+        return 0
+    for subsystem in subsystems:
+        urls = ", ".join(subsystem.ui_urls) if subsystem.ui_urls else "-"
+        print(f"[{subsystem.index}] {subsystem.identifier} ui={urls}")
+    return 0
+
+
+def cmd_custom_call(client: StudioClient, protos: ProtoBundle, args: argparse.Namespace) -> int:
+    request_cls = protos.message_class(args.request_type)
+    response_cls = protos.message_class(args.response_type)
+    request = request_cls()
+    json_format.Parse(args.json, request)
+    service = client.custom_subsystem(args.identifier)
+    response = service.call(request, response_cls)
+    print(json_format.MessageToJson(response, preserving_proto_field_name=True))
+    return 0
+
+
+def cmd_devtool(client: StudioClient, protos: ProtoBundle, operation: str) -> int:
+    service = client.custom_subsystem(DEVTOOL_ID)
+    request_cls = protos.message_class("cormoran.devtool.Request")
+    response_cls = protos.message_class("cormoran.devtool.Response")
+
+    request_json_by_operation = {
+        "get-lock-state": '{"getStudioLockState": {}}',
+        "unlock": '{"setStudioLockState": {"state": "STUDIO_LOCK_STATE_UNLOCKED"}}',
+        "lock": '{"setStudioLockState": {"state": "STUDIO_LOCK_STATE_LOCKED"}}',
+        "reboot": '{"reboot": {}}',
+        "bootloader": '{"enterBootloader": {}}',
+    }
+    request = request_cls()
+    json_format.Parse(request_json_by_operation[operation], request)
+    response = service.call(request, response_cls)
+    print(json_format.MessageToJson(response, preserving_proto_field_name=True))
+    return 0
+
+
+def cmd_probe(client: StudioClient, protos: ProtoBundle) -> int:
+    info = client.get_device_info()
+    print(f"official.core.get_device_info: ok name={info.name!r} serial={bytes(info.serial_number).hex()}")
+
+    state = client.get_lock_state()
+    print(f"official.core.get_lock_state: ok {client.protos.core.LockState.Name(state)}")
+
+    subsystems = client.list_custom_subsystems()
+    print(f"official.custom.list_custom_subsystems: ok count={len(subsystems)}")
+    for subsystem in subsystems:
+        print(f"  [{subsystem.index}] {subsystem.identifier}")
+
+    missing = client.custom_subsystem("__zmk_studio_rpc_probe_missing__", required=False)
+    print(f"custom.absent_identifier: ok present={missing is not None}")
+
+    if client.find_custom_subsystem(DEVTOOL_ID) is None:
+        print(f"custom.{DEVTOOL_ID}.get_studio_lock_state: skipped not present")
+        return 0
+
+    request_cls = protos.message_class("cormoran.devtool.Request")
+    response_cls = protos.message_class("cormoran.devtool.Response")
+    request = request_cls()
+    json_format.Parse('{"getStudioLockState": {}}', request)
+    response = client.custom_subsystem(DEVTOOL_ID).call(request, response_cls)
+    print(
+        "custom.cormoran__devtool.get_studio_lock_state: ok "
+        + json_format.MessageToJson(response, preserving_proto_field_name=True).strip()
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except SubsystemNotFoundError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(2)
+    except StudioRPCMetaError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(3)
+    except TransportTimeoutError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(4)
+    except RuntimeError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(5)

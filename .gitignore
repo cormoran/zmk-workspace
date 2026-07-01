@@ -7,3 +7,9 @@
 !.devcontainer/
 !skills/
 !skills/**
+!tools/
+!tools/**
+!docs/
+!docs/**
+**/__pycache__/
+*.pyc
