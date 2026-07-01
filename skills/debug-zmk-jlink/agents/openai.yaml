@@ -1,0 +1,4 @@
+interface:
+  display_name: "Debug ZMK J-Link"
+  short_description: "Debug ZMK keyboards with Studio RPC and J-Link"
+  default_prompt: "Use $debug-zmk-jlink to debug this ZMK keyboard firmware with Studio RPC and J-Link."
