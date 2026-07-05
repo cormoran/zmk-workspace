@@ -114,6 +114,23 @@ JLinkGDBServerCLExe -device nRF52840_xxAA -if SWD -speed 4000 -port 2331 -swopor
 
 On Linux/headless environments, prefer `JLinkGDBServerCLExe`. `JLinkGDBServerExe` may require an X server even for simple help/version output.
 
+When more than one J-Link probe is attached (e.g. debugging two boards of a split keyboard at once), always select the probe explicitly instead of relying on default/first-found selection. List probes and their serials first:
+
+```bash
+printf 'ShowEmuList\nExit\n' > /tmp/jlink-show-emulators.jlink
+JLinkExe -NoGui 1 -CommandFile /tmp/jlink-show-emulators.jlink
+```
+
+Then pin each `JLinkExe`/`JLinkGDBServerCLExe` invocation to one probe by serial, and give each GDB server instance its own port set so both can run concurrently:
+
+```bash
+JLinkExe -USB <serial> -NoGui 1 -CommandFile <file>          # or SelectEmuBySN <serial> inside the command file
+JLinkGDBServerCLExe -USB <serial-a> -device nRF52840_xxAA -if SWD -speed 4000 -port 2331 -swoport 2332 -telnetport 2333
+JLinkGDBServerCLExe -USB <serial-b> -device nRF52840_xxAA -if SWD -speed 4000 -port 2341 -swoport 2342 -telnetport 2343
+```
+
+If a probe is listed by `ShowEmuList` but every command against it fails with `Cannot connect to the probe/programmer`, its raw USB device node is likely missing from the container (see `references/jlink-gdb.md`'s LXC USB Notes) — this is an environment/pass-through problem, not a wiring or firmware problem.
+
 Connect:
 
 ```bash
