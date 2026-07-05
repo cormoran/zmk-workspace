@@ -31,6 +31,35 @@ lxc.cgroup2.devices.allow: c 189:* rwm
 lxc.mount.entry: /dev/bus/usb dev/bus/usb none bind,optional,create=dir
 ```
 
+**Confirmed failure mode (2026-07-05, LXD container with 2 J-Links attached):**
+`ShowEmuList` listing a probe does not guarantee it is actually reachable.
+Cross-check with the container's own view before trusting `ShowEmuList`:
+
+```bash
+for d in /sys/bus/usb/devices/*; do
+  [ -f "$d/idVendor" ] && [ "$(cat "$d/idVendor")" = "1366" ] && \
+    echo "$d: product=$(cat "$d/idProduct") busnum=$(cat "$d/busnum") devnum=$(cat "$d/devnum") serial=$(cat "$d/serial" 2>/dev/null)"
+done
+stat "/dev/bus/usb/$(printf '%03d' "$busnum")/$(printf '%03d' "$devnum")"
+```
+
+If `stat` reports "No such file", the probe is enumerated in sysfs (which an
+unprivileged container can usually read) but its raw usbfs device node was
+never bind-mounted into the container's `/dev/bus/usb` — a per-device LXD
+pass-through gap, not a JLinkExe problem. `SelectEmuBySN <serial>` then fails
+with `Cannot connect to the probe/programmer` on every subsequent command in
+the script, even non-connecting ones like `device`/`si`/`speed`. The fix is
+host-side (add/repair the LXD `usb` device for that probe's vendor:product,
+or restart the container); do not try to `mknod` the raw usbfs node
+yourself from inside the container as a workaround — usbfs character
+devices created that way do not behave like the real bind-mounted node and
+a `JLinkExe` connect attempt against one can hang for minutes. Repeated
+connect attempts against an unreachable probe have also been observed to
+knock a *different, working* probe's USB descriptor into a recovery-looking
+product ID (e.g. `1366:0101 "J-Link PLUS"` instead of its normal ID) —
+if that happens, stop and ask for the probe to be power-cycled rather than
+continuing to retry.
+
 ## Typical nRF52840 Session
 
 GDB server:
