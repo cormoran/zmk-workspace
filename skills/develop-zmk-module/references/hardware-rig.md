@@ -1,5 +1,9 @@
 # This PC's ZMK hardware rig
 
+- **The rig is shared by concurrent agent sessions.** Lock every probe/board
+  you use with the workspace's `tools/hw-lock` before the first hardware
+  command, heartbeat while holding, release when done — protocol in the
+  workspace repo's `docs/hardware-locking.md`.
 - Seeed XIAO nRF52840 + PMW3610 trackball sensor, wired: SPI0 SCK=P0.05 (D5),
   MOSI=MISO=P1.13 (D8, 3-wire shared), CS=`&xiao_d 10`, IRQ=`&xiao_d 9`
   (active-low, pull-up). Same wiring as

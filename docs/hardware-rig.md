@@ -79,6 +79,14 @@ None of this is specific to Claude/Codex — it's just what a from-scratch
 reproduction on another LXC/LXD host would need to get both probes and both
 boards reliably visible inside the container.
 
+## Concurrent use
+
+The rig is one physical resource shared by however many agent sessions are
+running in this workspace. Anything that touches a probe or board must hold
+the cooperative per-device locks described in
+[hardware-locking.md](hardware-locking.md) (helper:
+[`tools/hw-lock`](../tools/hw-lock)).
+
 ## Known rig-specific quirks
 
 These are particular to the physical units in this rig (not general LXC/ZMK
