@@ -44,6 +44,13 @@
 
 To re-initialize with other zmk-config, module, `rm -r .west` and do step3 again.
 
+## Hardware
+
+Some modules/features in this workspace are validated on real hardware
+(J-Link + Seeed XIAO nRF52840, split-keyboard debugging, etc.) inside an
+LXC/LXD container. See [docs/hardware-rig.md](docs/hardware-rig.md) for how
+that rig is set up, if you want to reproduce something similar.
+
 ## Acknowledgment
 
 Setup with nix is based on below works by @urob and @kot149
