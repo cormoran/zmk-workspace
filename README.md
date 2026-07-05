@@ -49,7 +49,10 @@ To re-initialize with other zmk-config, module, `rm -r .west` and do step3 again
 Some modules/features in this workspace are validated on real hardware
 (J-Link + Seeed XIAO nRF52840, split-keyboard debugging, etc.) inside an
 LXC/LXD container. See [docs/hardware-rig.md](docs/hardware-rig.md) for how
-that rig is set up, if you want to reproduce something similar.
+that rig is set up, if you want to reproduce something similar. The rig is
+shared between concurrent agent sessions — anything touching it must follow
+the lock protocol in [docs/hardware-locking.md](docs/hardware-locking.md)
+(helper: [tools/hw-lock](tools/hw-lock)).
 
 ## Acknowledgment
 

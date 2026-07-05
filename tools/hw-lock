@@ -1,0 +1,248 @@
+#!/usr/bin/env bash
+# hw-lock — cooperative file locks for this workspace's shared hardware rig
+# (SEGGER J-Link probes + XIAO test boards), so concurrent agents don't fight
+# over the same probe/board. Protocol details: docs/hardware-locking.md
+set -euo pipefail
+
+LOCK_DIR="${ZMK_HW_LOCK_DIR:-$HOME/.zmk-hw-locks}"
+STALE_SECONDS="${ZMK_HW_LOCK_STALE_SECONDS:-600}"
+
+usage() {
+  cat <<'EOF'
+usage:
+  hw-lock list [--names]        # lockable resources derived from /dev/zmk-hp-*
+  hw-lock status                # who holds what, and how fresh
+  hw-lock acquire [--owner ID] [--task TEXT] [--wait SECONDS] NAME...
+  hw-lock touch   [--owner ID] NAME...   # heartbeat: refresh mtime of held locks
+  hw-lock release [--owner ID] (--all | NAME...)
+
+Resource names look like jlink-<serial> / zmk-<serial> (from `hw-lock list`).
+Owner id resolution: --owner, then $ZMK_HW_LOCK_OWNER, then $CLAUDE_SESSION_ID,
+then an id persisted in $TMPDIR (when session-scoped). Lock dir: $ZMK_HW_LOCK_DIR
+or ~/.zmk-hw-locks. Locks older than $ZMK_HW_LOCK_STALE_SECONDS (default 600s)
+are stale and may be reclaimed by anyone.
+EOF
+}
+
+die() { echo "hw-lock: $*" >&2; exit 1; }
+now() { date +%s; }
+
+resolve_owner() {
+  local raw=""
+  if [ -n "$OWNER_OPT" ]; then raw="$OWNER_OPT"
+  elif [ -n "${ZMK_HW_LOCK_OWNER:-}" ]; then raw="$ZMK_HW_LOCK_OWNER"
+  elif [ -n "${CLAUDE_SESSION_ID:-}" ]; then raw="claude-$CLAUDE_SESSION_ID"
+  elif [ -n "${TMPDIR:-}" ] && [ "${TMPDIR%/}" != /tmp ] && [ -d "$TMPDIR" ] && [ -w "$TMPDIR" ]; then
+    # Session-scoped temp dir: persist a generated id there so every shell
+    # invocation in the same session resolves to the same owner.
+    local f="${TMPDIR%/}/zmk-hw-lock-owner"
+    [ -f "$f" ] || printf 'anon-%s-%s\n' "$(now)" "$$$RANDOM" > "$f"
+    raw="$(head -n1 "$f")"
+  else
+    die "cannot determine a stable owner id: pass --owner <session-id> or export ZMK_HW_LOCK_OWNER"
+  fi
+  printf '%s' "$raw" | tr -c 'A-Za-z0-9._:-' '-'
+}
+
+check_name() {
+  case "$1" in
+    ''|.*|*[!A-Za-z0-9._-]*) die "invalid resource name '$1' (expect e.g. jlink-<serial>, zmk-<serial>)" ;;
+  esac
+}
+
+lock_owner_of() { sed -n 's/^owner=//p' "$1" 2>/dev/null | head -n1; }
+lock_task_of()  { sed -n 's/^task=//p'  "$1" 2>/dev/null | head -n1; }
+lock_age() {
+  local m
+  m=$(stat -c %Y "$1" 2>/dev/null) || { echo -1; return; }
+  echo $(( $(now) - m ))
+}
+
+try_create() { # $1=path — atomic create; fails if the file already exists
+  ( set -C
+    { printf 'owner=%s\n' "$OWNER"
+      printf 'acquired=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      [ -n "$TASK_OPT" ] && printf 'task=%s\n' "$TASK_OPT"
+      :
+    } > "$1"
+  ) 2>/dev/null
+}
+
+acquire_one() { # $1=name
+  local name="$1" path="$LOCK_DIR/$1" holder age steal deadline
+  deadline=$(( $(now) + WAIT_OPT ))
+  while :; do
+    if try_create "$path"; then
+      echo "acquired $name"
+      return 0
+    fi
+    holder="$(lock_owner_of "$path")"
+    age="$(lock_age "$path")"
+    if [ "$age" -lt 0 ]; then continue; fi          # lock vanished; retry
+    if [ "$holder" = "$OWNER" ]; then               # already ours: refresh
+      touch "$path"
+      echo "already held: $name (refreshed)"
+      return 0
+    fi
+    if [ "$age" -gt "$STALE_SECONDS" ]; then
+      # Reclaim a stale lock: atomically move it aside first so only one
+      # contender wins the steal, then create our own via the normal path.
+      steal="$LOCK_DIR/.steal.$name.$$.$RANDOM"
+      if mv "$path" "$steal" 2>/dev/null; then
+        echo "reclaimed stale lock $name (was owner='$holder', age ${age}s)" >&2
+        rm -f "$steal"
+      fi
+      continue
+    fi
+    if [ "$(now)" -lt "$deadline" ]; then
+      sleep 15
+      continue
+    fi
+    echo "hw-lock: $name is held by '$holder' (age ${age}s, task='$(lock_task_of "$path")')" >&2
+    return 1
+  done
+}
+
+release_own() { # $1=name; releases only if we own it
+  local path="$LOCK_DIR/$1" holder
+  [ -f "$path" ] || { echo "not locked: $1"; return 0; }
+  holder="$(lock_owner_of "$path")"
+  if [ "$holder" = "$OWNER" ]; then
+    rm -f "$path"
+    echo "released $1"
+  else
+    echo "hw-lock: NOT releasing $1 — held by '$holder', not us" >&2
+    return 1
+  fi
+}
+
+cmd_acquire() {
+  [ ${#ARGS[@]} -ge 1 ] || die "acquire: need at least one resource name (see 'hw-lock list')"
+  local names=() n g
+  while IFS= read -r n; do names+=("$n"); done < <(printf '%s\n' "${ARGS[@]}" | sort -u)
+  for n in "${names[@]}"; do check_name "$n"; done
+  # Sorted order + rollback on failure prevents deadlock between two agents
+  # acquiring overlapping sets.
+  local got=()
+  for n in "${names[@]}"; do
+    if acquire_one "$n"; then
+      got+=("$n")
+    else
+      for g in "${got[@]}"; do release_own "$g" || true; done
+      die "could not acquire '$n'; rolled back this call's locks. Retry with --wait <sec>, pick other hardware, or report the contention."
+    fi
+  done
+  echo "owner=$OWNER lock_dir=$LOCK_DIR"
+}
+
+cmd_touch() {
+  [ ${#ARGS[@]} -ge 1 ] || die "touch: need at least one resource name"
+  local n path holder
+  for n in "${ARGS[@]}"; do
+    check_name "$n"
+    path="$LOCK_DIR/$n"
+    [ -f "$path" ] || die "lost lock '$n' (missing — expired and reclaimed?). Stop hardware work and re-acquire."
+    holder="$(lock_owner_of "$path")"
+    [ "$holder" = "$OWNER" ] || die "lost lock '$n' — now held by '$holder'. Stop hardware work and re-acquire."
+    touch "$path"
+  done
+  echo "heartbeat ok: ${ARGS[*]}"
+}
+
+cmd_release() {
+  local n path
+  if [ "$ALL_OPT" = 1 ]; then
+    for path in "$LOCK_DIR"/*; do
+      [ -f "$path" ] || continue
+      n="$(basename "$path")"
+      [ "$(lock_owner_of "$path")" = "$OWNER" ] || continue
+      release_own "$n"
+    done
+    return 0
+  fi
+  [ ${#ARGS[@]} -ge 1 ] || die "release: pass resource names or --all"
+  local rc=0
+  for n in "${ARGS[@]}"; do
+    check_name "$n"
+    release_own "$n" || rc=1
+  done
+  return $rc
+}
+
+list_resources() {
+  local node base r
+  for node in /dev/zmk-hp-*; do
+    [ -e "$node" ] || continue
+    base="$(basename "$node")"
+    r="$(printf '%s\n' "$base" | sed -n 's/^zmk-hp-\(jlink\|zmk\)-\(tty\|hidraw\|input\)-\(.*\)-[0-9][0-9]*$/\1-\3/p')"
+    [ -n "$r" ] && printf '%s\n' "$r"
+  done | sort -u
+}
+
+cmd_list() {
+  local r path holder age any=0
+  while IFS= read -r r; do
+    any=1
+    if [ "$NAMES_OPT" = 1 ]; then
+      printf '%s\n' "$r"
+      continue
+    fi
+    path="$LOCK_DIR/$r"
+    if [ -f "$path" ]; then
+      holder="$(lock_owner_of "$path")"; age="$(lock_age "$path")"
+      printf '%s\tlocked by %s (age %ss%s)\n' "$r" "$holder" "$age" "$( [ "$age" -gt "$STALE_SECONDS" ] && echo ', STALE' )"
+    else
+      printf '%s\tfree\n' "$r"
+    fi
+  done < <(list_resources)
+  if [ "$any" = 0 ]; then
+    echo "hw-lock: no /dev/zmk-hp-* device nodes found; if the rig uses other naming, derive names manually (jlink-<ShowEmuList serial>) and lock those" >&2
+  fi
+}
+
+cmd_status() {
+  echo "lock_dir=$LOCK_DIR stale_after=${STALE_SECONDS}s"
+  local path n age
+  local found=0
+  for path in "$LOCK_DIR"/*; do
+    [ -f "$path" ] || continue
+    found=1
+    n="$(basename "$path")"
+    age="$(lock_age "$path")"
+    printf '%s\towner=%s\tage=%ss\t%s\ttask=%s\n' \
+      "$n" "$(lock_owner_of "$path")" "$age" \
+      "$( [ "$age" -gt "$STALE_SECONDS" ] && echo STALE || echo fresh )" \
+      "$(lock_task_of "$path")"
+  done
+  [ "$found" = 1 ] || echo "(no locks held)"
+}
+
+CMD="${1:-}"
+[ $# -gt 0 ] && shift
+OWNER_OPT="" TASK_OPT="" WAIT_OPT=0 ALL_OPT=0 NAMES_OPT=0
+ARGS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --owner) OWNER_OPT="${2:?--owner needs a value}"; shift 2 ;;
+    --task)  TASK_OPT="$(printf '%s' "${2:?--task needs a value}" | tr '\n' ' ')"; shift 2 ;;
+    --wait)  WAIT_OPT="${2:?--wait needs seconds}"; shift 2 ;;
+    --all)   ALL_OPT=1; shift ;;
+    --names) NAMES_OPT=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    -*) die "unknown option '$1'" ;;
+    *) ARGS+=("$1"); shift ;;
+  esac
+done
+case "$WAIT_OPT" in *[!0-9]*) die "--wait expects seconds" ;; esac
+
+mkdir -p "$LOCK_DIR"
+
+case "$CMD" in
+  list)    cmd_list ;;
+  status)  cmd_status ;;
+  acquire) OWNER="$(resolve_owner)"; cmd_acquire ;;
+  touch)   OWNER="$(resolve_owner)"; cmd_touch ;;
+  release) OWNER="$(resolve_owner)"; cmd_release ;;
+  ''|help) usage; [ "$CMD" = help ] || exit 1 ;;
+  *) die "unknown command '$CMD' (see 'hw-lock help')" ;;
+esac

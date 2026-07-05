@@ -35,7 +35,11 @@ subagents with self-contained prompts, verifying between phases:
   and `$debug-zmk-jlink`)
 
 Each phase prompt must include: exact nix devshell command line, test commands,
-"commit at milestones, no push/gh", and the known pitfalls below.
+"commit at milestones, no push/gh", and the known pitfalls below. Hardware
+phases (D) must additionally include the hardware-lock rule verbatim: acquire
+per-device locks with the workspace's `tools/hw-lock` before any command that
+touches a probe/board, heartbeat while holding, release when hardware work
+ends (see `docs/hardware-locking.md` in the workspace repo).
 
 ## Commands
 
@@ -95,5 +99,8 @@ pre-commit run --all-files     # see pitfall about web hooks
 
 ## Hardware validation
 
-Use `$debug-zmk-jlink`. Extra facts for this workspace's rig:
+Use `$debug-zmk-jlink`. The rig is shared between concurrent agents — lock the
+devices you use via the workspace's `tools/hw-lock` before touching them
+(protocol: `docs/hardware-locking.md` in the workspace repo). Extra facts for
+this workspace's rig:
 [references/hardware-rig.md](references/hardware-rig.md).

@@ -15,6 +15,18 @@ This skill extends `$debug-zmk-jlink` to two boards debugged concurrently. Use `
 4. Power/observe both boards together. Verify split pairing over BLE (host BlueZ scan, or each side's own logs/Studio RPC), not just that each board boots alone.
 5. Only once pairing is confirmed, attach GDB/RTT to either or both sides to chase a specific bug.
 
+## Lock the Whole Rig First
+
+Split debugging uses both probes and both boards at once, so acquire **every** rig resource before any hardware command (including the `ShowEmuList` below) and hold them for the whole hardware session, per `docs/hardware-locking.md`:
+
+```bash
+SID=<your-session-id-or-worktree-name>   # same value on every call
+"$ZMK_WORKSPACE"/tools/hw-lock acquire --owner "$SID" --task "split debug" \
+  $("$ZMK_WORKSPACE"/tools/hw-lock list --names)
+```
+
+Heartbeat with `hw-lock touch --owner "$SID" ...` at the start of each batch of hardware commands (at least every 3 min — locks go stale at 10 min), and `hw-lock release --owner "$SID" --all` as soon as hardware work ends. If acquisition fails because another session holds part of the rig, wait with `--wait <sec>` or report the contention instead of proceeding.
+
 ## Required Setup
 
 Two SEGGER J-Links, each SWD-wired to its own XIAO-class board, both attached to the same host/container. Confirm both probes and cross-check that each is *actually* reachable — `ShowEmuList` listing a probe is necessary but not sufficient:

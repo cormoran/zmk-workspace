@@ -17,6 +17,20 @@ Prefer the least intrusive observation first:
 4. If the firmware freezes or behaves suspiciously, halt with J-Link and inspect threads, stacks, registers, backtrace, and relevant symbols.
 5. Rebuild with temporary debug Kconfig only when runtime evidence is insufficient, and keep a near-release build for comparison.
 
+## Lock the Hardware First
+
+The rig is shared by concurrent agent sessions. Before the first command that touches a probe or board — `JLinkExe` (even `ShowEmuList`), `JLinkGDBServer*`, flashing, RTT, or opening `/dev/zmk-hp-*` for Studio RPC — acquire per-device locks, and release them the moment hardware work ends. Full protocol (resource names, heartbeat, staleness, owner id rules): `docs/hardware-locking.md` in this workspace.
+
+```bash
+SID=<your-session-id-or-worktree-name>   # same value on every call, whole session
+"$ZMK_WORKSPACE"/tools/hw-lock list      # resources: jlink-<serial>, zmk-<serial>
+"$ZMK_WORKSPACE"/tools/hw-lock acquire --owner "$SID" --task "<goal>" jlink-<serial> zmk-<serial>
+"$ZMK_WORKSPACE"/tools/hw-lock touch --owner "$SID" jlink-<serial> zmk-<serial>   # heartbeat: before each hardware batch, ≥ every 3 min
+"$ZMK_WORKSPACE"/tools/hw-lock release --owner "$SID" --all                       # when hardware work ends
+```
+
+Lock the probe together with the `zmk-<serial>` of the board it is SWD-wired to (flash/halt/reset disturbs the board's USB side). If you don't yet know which serials form your unit, acquire everything (`acquire $(hw-lock list --names)`) and release the extras after identification. If `acquire` reports another live owner, retry with `--wait <sec>`, do non-hardware work, or report the contention — never touch the hardware without holding the lock.
+
 ## Required Setup
 
 Invoke `$build-zmk-config` to produce a build directory and firmware artifacts. Keep the build log, `.config`, `build_info.yml`, `zephyr/zmk.elf`, `zephyr/zmk.map`, and generated UF2/HEX. If the repo provides a Nix devShell for west, run the build through that shell as described by `$build-zmk-config`.
