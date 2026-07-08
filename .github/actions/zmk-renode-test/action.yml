@@ -105,13 +105,29 @@ runs:
 
     - name: Install Python + protoc dependencies
       shell: bash
+      # The zmkfirmware/zmk-build-arm:stable container has python3 but no
+      # `python3 -m pip` (west comes preinstalled some other way), and no
+      # sudo (steps already run as root) -- try the least invasive route
+      # first and fall back progressively.
       run: |
-        python3 -m pip install --quiet --upgrade protobuf
+        apt_get() {
+          if command -v sudo >/dev/null 2>&1; then sudo apt-get "$@"; else apt-get "$@"; fi
+        }
+        apt_updated=""
+        apt_install() {
+          if [ -z "$apt_updated" ]; then apt_get update -y; apt_updated=1; fi
+          apt_get install -y --no-install-recommends "$@"
+        }
+
+        if ! python3 -c "import google.protobuf" >/dev/null 2>&1; then
+          python3 -m pip install --quiet protobuf 2>/dev/null \
+            || pip3 install --quiet protobuf 2>/dev/null \
+            || apt_install python3-protobuf
+          python3 -c "import google.protobuf; print('python protobuf', google.protobuf.__version__)"
+        fi
+
         if ! command -v protoc >/dev/null 2>&1; then
-          if command -v apt-get >/dev/null 2>&1; then
-            (sudo apt-get update -y && sudo apt-get install -y protobuf-compiler) \
-              || (apt-get update -y && apt-get install -y protobuf-compiler)
-          fi
+          apt_install protobuf-compiler
         fi
         protoc --version
 
