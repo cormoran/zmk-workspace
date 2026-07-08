@@ -83,8 +83,15 @@ runs:
     - name: Resolve paths
       id: paths
       shell: bash
+      # NB: must use the $GITHUB_ACTION_PATH env var, NOT the
+      # ${{ github.action_path }} expression -- inside a container job the
+      # expression evaluates to the *host* path (/home/runner/work/_actions/...)
+      # while the files are mounted at /__w/_actions/... in the container;
+      # the env var is path-translated by the runner, the expression is not
+      # (actions/runner#716). This bit us on the first CI run.
       run: |
-        echo "scripts-dir=${{ github.action_path }}/../../../skills/test-zmk-renode/scripts" >> "$GITHUB_OUTPUT"
+        scripts_dir="$(cd "$GITHUB_ACTION_PATH/../../../skills/test-zmk-renode/scripts" && pwd)"
+        echo "scripts-dir=$scripts_dir" >> "$GITHUB_OUTPUT"
 
     - name: Cache Renode install
       uses: actions/cache@v4
