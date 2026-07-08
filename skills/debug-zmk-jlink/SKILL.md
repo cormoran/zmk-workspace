@@ -177,6 +177,31 @@ b k_panic
 
 For J-Link command details, RTT logging, and freeze triage, read [references/jlink-gdb.md](references/jlink-gdb.md).
 
+**On BLE/radio-timing-sensitive targets (a Zephyr software Link Layer,
+`CONFIG_BT_LL_SW_SPLIT`), prefer non-halting observation.** Halting the
+core — via a held GDB breakpoint/`continue` session, or even a plain
+JLinkExe `h`/`halt` — can itself trip radio-timing assertions and
+crash/reset the target, contaminating the exact behavior being
+investigated. `JLinkExe`'s `mem`/`savebin` commands work without halting
+(`connect` then read, no `h`) via Cortex-M's background memory access —
+use this to poll RTT logs or core-status registers (`DHCSR`) non-invasively
+instead of a live GDB session whenever the target's own radio/BLE timing
+is a live concern. See references/jlink-gdb.md's "Non-halting memory
+reads" section for the exact recipe, and
+`skills/debug-zmk-split/SKILL.md`'s "GDB Attach Itself Can Destabilize BLE
+Radio Timing" section for the hardware evidence behind this guidance.
+
+**Before attributing a "response/output never arrives" symptom to
+timing, transport, or connection issues, rule out leftover diagnostic
+scaffolding in the suspect code first.** A `printk`/`LOG_*` immediately
+followed by an early `return`/`break` — left over from an earlier
+debugging session and never reverted — produces exactly this symptom and
+is invisible to any amount of hardware tracing, because the traced layer
+(transport/connection) was never actually broken; the handler simply
+never reached its real logic. `grep` the suspect handler(s) for such
+scaffolding (watch for comments like "DIAG STEP", "bisecting", "revert
+before committing") before spending hardware time on deeper hypotheses.
+
 ## Stack Headroom Strategy
 
 Do not declare stack sizes safe from configured sizes alone. Establish evidence in this order:
