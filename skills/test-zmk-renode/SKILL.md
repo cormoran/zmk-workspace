@@ -108,41 +108,46 @@ mode for the importable/parameterized pieces the action wires together.
 `zmk-module-template-with-custom-studio-rpc`'s `tests/renode/` is the
 worked example.
 
-### Discovered while bringing up the template's custom-RPC test: a real, non-Renode firmware bug
+### Known Renode limitation: larger custom-subsystem RPC responses stall
 
 Bringing up `zmk-module-template-with-custom-studio-rpc`'s own
 `tests/renode/renode_test.py` (exercising its custom Studio RPC subsystem,
-not just core RPC) surfaced a genuine, reproducible bug in the vendored
-"custom-studio-protocol" ZMK fork that template depends on — **confirmed
-NOT a Renode artifact** (verified with byte-paced UART delivery bypassing
-any burst/timing sensitivity, and with Renode's monitor —
-`sysbus.cpu ExecutedInstructions` growing at a steady ~5×10⁸/s and
-`sysbus.cpu PC` sampled repeatedly inside `ring_buf_area_claim`/
-`ring_buf_area_finish` — to rule out a blocked/sleeping thread):
+not just core RPC) surfaced a reproducible **Renode-environment**
+limitation. Initially this looked like a general bug in the vendored
+"custom-studio-protocol" ZMK fork, but a differential against
+`zmk-feature-studio-rpc-perf` — which uses the exact same custom-subsystem
+macros, is pinned to the *same* fork commit (618f083), and is validated
+working on real hardware — showed the perf module's custom RPC hits the
+same wall under Renode. So: Renode-specific, not a fork bug. Measured
+scaling (all under Renode, fresh boot per case):
 
-Any Studio RPC response that goes through a *registered* custom
-subsystem's callback-based response encoding
-(`ZMK_RPC_CUSTOM_SUBSYSTEM_RESPONSE_BUFFER_ALLOCATE` /
-`zmk_rpc_custom_subsystem_encode_response_payload`, vendored
-`dependencies/zmk/app/include/zmk/studio/custom.h` +
-`.../src/studio/custom_subsystem.c`) makes `studio_rpc_thread` spin forever
-inside `rpc_tx_buffer_write`'s `ring_buf_put_claim`/`ring_buf_put_finish`
-loop (vendored `.../src/studio/rpc.c`). Reproduces identically for a real,
-successful response *and* a module's own tiny decode-failure
-`ErrorResponse` — i.e. it's not about response size, only about whether a
-*real* registered subsystem's callback-encoding path is exercised at all.
-`custom.call` to a subsystem index that doesn't exist takes a different,
-callback-free fast path (`meta.simple_error`/`RPC_NOT_FOUND`) and works
-fine — proof the envelope/dispatch machinery itself (framing, oneof
-selection, index validation) is otherwise sound.
+| Response | ~framed size | Result under Renode |
+|---|---|---|
+| `meta.simple_error` (invalid subsystem index) | ~10 B | reliable, repeatedly |
+| core `GetDeviceInfo` (the smoke test) | ~21 B | reliable, repeatedly (T1 sends 2) |
+| perf custom response, `response_size=8` | ~28 B | OK twice, 3rd call times out |
+| perf custom response, `response_size=40/64` | ~55–90 B | first call times out |
+| template `SampleResponse` | ~51 B | first call times out |
+| `ListCustomSubsystemRequest` (identifier + UI URL) | ~80+ B | first call times out |
 
-This is a vendored-ZMK bug, out of scope to patch from a module template's
-own files or from this skill's harness. Per this skill's own convention for
-documented-but-not-chased-further findings (see T3 above), the template's
-test captures this as an assertion of the *known failure* rather than a
-silent skip, so a future upstream fix makes it start failing loudly. See
-`zmk-module-template-with-custom-studio-rpc/tests/renode/renode_test.py`'s
-module docstring for the full repro/localization write-up.
+During a stall the firmware is *not* crashed — `sysbus.cpu
+ExecutedInstructions` keeps growing steadily and `sysbus.cpu PC` samples
+land inside `ring_buf_area_claim`/`ring_buf_area_finish` — consistent with
+the studio RPC TX path waiting on a TX ring buffer that never drains.
+Ruled out individually: request-delivery timing (byte-paced sends behave
+identically), `CONFIG_ZMK_STUDIO_RPC_RX_BUF_SIZE` (30 vs 128),
+`CONFIG_ZMK_STUDIO_RPC_TX_BUF_SIZE` (64 vs 256, verified in `.config`),
+and always-enabling TX IRQ in `renode-test-module`'s transport. The most
+plausible remaining suspect is an interaction between `rpc.c`'s
+`tx_notify` batching heuristics and Renode's nRF52840 UARTE TX-interrupt
+model; not chased further per time-box (it does not affect real hardware).
+
+Practical rule for tests running under this harness: **keep RPC responses
+small (≲25 bytes framed) and don't rely on more than a couple of
+custom-subsystem round trips per boot** — or assert the documented failure,
+as the template's `..._KNOWN_BROKEN_UNDER_RENODE` test does, so a future
+fix announces itself. See that test file's module docstring for the full
+differential write-up.
 
 ## Key Gotchas (see `references/renode-notes.md` for the full detail)
 

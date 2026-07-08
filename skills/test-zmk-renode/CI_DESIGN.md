@@ -78,16 +78,21 @@ Implemented as designed, with the details below refined during bring-up:
   needed.
 - **Deviation from "the module's own custom RPC round trip, asserting the
   expected SampleResponse value":** bringing up the template's own
-  `tests/renode/renode_test.py` found a genuine, reproducible bug in the
-  vendored custom-studio-protocol ZMK fork (confirmed not a Renode
-  artifact) — any response encoded via a *registered* custom subsystem's
-  callback-based response path hangs `studio_rpc_thread` forever. The
-  template's test therefore asserts the custom-subsystem *envelope and
-  dispatch* work end-to-end (via a call to a deliberately-invalid
-  subsystem index, which takes a different, working fast path) and
-  documents+asserts the known hang for the real round trip, rather than
-  asserting a real `SampleResponse`. See that test file's module docstring
-  and this skill's `SKILL.md` for the full repro/localization write-up.
+  `tests/renode/renode_test.py` hit a reproducible **Renode-environment**
+  limitation — custom-subsystem responses larger than a few tens of bytes
+  (the template's `SampleResponse` is ~51 B framed) are never delivered
+  under Renode, and even small ones stall after a couple of round trips.
+  A differential against `zmk-feature-studio-rpc-perf` (same fork commit
+  618f083, same custom-subsystem macros, hardware-validated) reproduced
+  the identical size-dependent stall under Renode, so this is emulation-
+  specific, not a fork bug (an earlier draft of this note wrongly called
+  it one). The template's test therefore asserts the custom-subsystem
+  *envelope and dispatch* work end-to-end (via a call to a deliberately-
+  invalid subsystem index, which takes a small, callback-free
+  `meta.simple_error` path) and documents+asserts the known Renode stall
+  for the real round trip, rather than asserting a real `SampleResponse`.
+  See that test file's module docstring and this skill's `SKILL.md`
+  ("Known Renode limitation") for the full differential data.
 
 ## Constraints / knowns
 
