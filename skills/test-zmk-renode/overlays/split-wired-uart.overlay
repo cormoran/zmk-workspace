@@ -1,0 +1,96 @@
+/*
+ * Renode-friendly wired-split overlay for the XIAO nRF52840.
+ *
+ * Binds ZMK's `zmk,wired-split` transport (CONFIG_ZMK_SPLIT_WIRED) to uart1,
+ * and keeps the console on uart0 so each machine's boot/relay log lines are
+ * observable over its own socket. Used for both the central and peripheral
+ * builds — the only difference between the two artifacts is the
+ * CONFIG_ZMK_SPLIT_ROLE_CENTRAL Kconfig flag, not this overlay.
+ *
+ * Renode note: uart1's pinctrl points at pins not broken out / not verified
+ * conflict-free on a real XIAO board (see studio-rpc-uart.overlay for the
+ * same caveat) — this overlay is for emulation only.
+ *
+ * nRF52840 only has two hardware UARTs (UARTE0, UARTE1), so a single build
+ * cannot carry console + split-wired + Studio RPC all on separate hardware
+ * UARTs at once. This overlay dedicates uart1 to the split link and uart0 to
+ * console; it does not also enable zmk,studio-rpc-uart. See
+ * EXPERIMENT_LOG.md / SKILL.md for how T2 verifies the split connected
+ * (central/peripheral console log lines) without a UART left over for RPC.
+ *
+ * Renode gotcha: disable &qspi (external NOR flash chip) — Renode does not
+ * model its EVENTS_READY register, so the nrfx QSPI driver's init busy-waits
+ * forever and the firmware never reaches main(), with no crash/error, just
+ * silence. See studio-rpc-uart.overlay for the full explanation; this chip
+ * is not ZMK's settings/keymap backend so disabling it is safe.
+ */
+
+&qspi {
+    status = "disabled";
+};
+
+/* Disabling the qspi bus node above does NOT auto-disable this child flash
+ * device node (devicetree status does not cascade to children) — see
+ * studio-rpc-uart.overlay for the full explanation. Must disable both. */
+&p25q16h {
+    status = "disabled";
+};
+
+/* Same class of bug again: xiao_ble_common.dtsi unconditionally enables a
+ * USB-CDC-ACM UART node (`board_cdc_acm_uart`, child of &usbd). We don't use
+ * it, but merely being "okay" is enough for Zephyr to build+init its driver,
+ * which busy-waits on USBD:EVENTCAUSE forever under Renode (no real USB
+ * host attach event ever arrives) — hanging boot the same way QSPI did. See
+ * studio-rpc-uart.overlay for the full explanation. */
+&board_cdc_acm_uart {
+    status = "disabled";
+};
+
+&usbd {
+    status = "disabled";
+};
+
+&pinctrl {
+    uart1_default: uart1_default {
+        group1 {
+            psels = <NRF_PSEL(UART_TX, 0, 2)>;
+        };
+        group2 {
+            psels = <NRF_PSEL(UART_RX, 0, 3)>;
+            bias-pull-up;
+        };
+    };
+
+    uart1_sleep: uart1_sleep {
+        group1 {
+            psels = <NRF_PSEL(UART_TX, 0, 2)>,
+                    <NRF_PSEL(UART_RX, 0, 3)>;
+            low-power-enable;
+        };
+    };
+};
+
+&uart0 {
+    status = "okay";
+};
+
+&uart1 {
+    compatible = "nordic,nrf-uarte";
+    status = "okay";
+    current-speed = <115200>;
+    pinctrl-0 = <&uart1_default>;
+    pinctrl-1 = <&uart1_sleep>;
+    pinctrl-names = "default", "sleep";
+};
+
+/ {
+    chosen {
+        zephyr,console = &uart0;
+        zephyr,shell-uart = &uart0;
+    };
+
+    wired_split: wired_split {
+        compatible = "zmk,wired-split";
+        device = <&uart1>;
+    };
+};
