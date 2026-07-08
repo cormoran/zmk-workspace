@@ -26,12 +26,11 @@ jobs:
 
       - uses: cormoran/zmk-workspace/.github/actions/zmk-renode-test@<sha>
         with:
-          west-topdir: ${{ github.workspace }}
           shield: tester_xiao
-          zmk-config: ${{ github.workspace }}/tests/zmk-config/config
+          zmk-config: tests/zmk-config/config
           module-paths: |
-            ${{ github.workspace }}
-            ${{ github.workspace }}/tests/zmk-config
+            .
+            tests/zmk-config
           cmake-args: |
             -DCONFIG_ZMK_STUDIO=y
             -DCONFIG_ZMK_TEMPLATE_FEATURE=y
@@ -44,11 +43,18 @@ PR into `zmk-workspace` merges). See
 `zmk-module-template-with-custom-studio-rpc`'s
 `.github/workflows/zmk-module.yml` for a complete, working example.
 
+Path inputs may be relative; the action resolves them against
+`$GITHUB_WORKSPACE` inside its own steps. **Prefer relative paths over
+`${{ github.workspace }}`** — in a container job that expression evaluates
+to the runner-host path (`/home/runner/work/...`) while the checkout is
+mounted at `/__w/...` inside the container, so host-absolute paths do not
+exist there (actions/runner#716).
+
 ## Inputs
 
 | Input | Required | Default | Description |
 |---|---|---|---|
-| `west-topdir` | yes | — | The consuming module's own west workspace root (its checkout root, for a module with an embedded workspace). |
+| `west-topdir` | no | `.` (workspace root) | The consuming module's own west workspace root (its checkout root, for a module with an embedded workspace). |
 | `board` | no | `xiao_ble//zmk` | Target board triplet. The only bring-up-validated board. |
 | `shield` | yes | — | Shield to build (`-DSHIELD=...`). |
 | `zmk-config` | yes | — | Path to the `ZMK_CONFIG` dir. |
