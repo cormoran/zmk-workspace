@@ -1,0 +1,175 @@
+name: "ZMK Renode Test"
+description: >-
+  Build a ZMK module's firmware with the Renode Studio-RPC-over-UART overlay
+  and transport, boot it in the Renode emulator, run a generic boot + core
+  Studio RPC smoke test, and (optionally) the module's own Renode test
+  suite. See README.md in this directory for the full contract and a usage
+  example. Backed by skills/test-zmk-renode/ in this same repo -- read that
+  skill's SKILL.md / references/renode-notes.md for the underlying gotchas.
+
+inputs:
+  west-topdir:
+    description: >-
+      Path to the consuming module's own west workspace root (its checkout,
+      for a module with an embedded workspace -- the default `west topdir`
+      layout this action was built against).
+    required: true
+  board:
+    description: "Target board triplet."
+    default: "xiao_ble//zmk"
+  shield:
+    description: "Shield to build (passed as -DSHIELD=...)."
+    required: true
+  zmk-config:
+    description: "Path to the ZMK_CONFIG dir (keymap/conf overlays)."
+    required: true
+  zmk-app:
+    description: >-
+      Override the `-s` app dir passed to `west build`. Defaults to
+      `<west-topdir>/dependencies/zmk/app`.
+    required: false
+    default: ""
+  module-paths:
+    description: >-
+      Extra ZMK_EXTRA_MODULES entries, one per line (the module repo
+      itself, its own tests/zmk-config dir, sibling feature modules, ...).
+      The Renode Studio-RPC-over-UART transport module is always appended
+      automatically; do not list it here.
+    required: false
+    default: ""
+  cmake-args:
+    description: >-
+      Extra `-D...` cmake args, one per line (module feature flags, e.g.
+      `-DCONFIG_ZMK_TEMPLATE_FEATURE=y`). CONFIG_ZMK_STUDIO=y is NOT added
+      automatically -- include it here if the build under test needs Studio
+      RPC at all.
+    required: false
+    default: ""
+  overlay:
+    description: >-
+      'studio-rpc-uart' (default, T0/T1-style single board), 'split-wired-uart',
+      or a path (relative to `west-topdir`) to a custom devicetree overlay.
+    default: "studio-rpc-uart"
+  elf-path:
+    description: >-
+      Skip the build step and use this prebuilt ELF instead (for the
+      two-job build-then-test split described in CI_DESIGN.md, if Renode
+      can't run in the same container the build does).
+    required: false
+    default: ""
+  tests:
+    description: >-
+      Path (relative to `west-topdir`) to a directory of the module's own
+      Renode test files to run after the smoke test, e.g. `tests/renode`.
+      Run via `python3 <file> -v` for every `*_test.py` directly under it
+      (non-recursive). Leave empty to run only the generic smoke test.
+    required: false
+    default: ""
+  renode-version:
+    description: "Renode portable release version to install."
+    default: "1.16.1"
+  boot-timeout-seconds:
+    description: "Smoke test: seconds to wait for the ZMK boot banner."
+    default: "20"
+
+outputs:
+  elf-path:
+    description: "Absolute path to the (built or prebuilt) firmware ELF."
+    value: ${{ steps.resolve-elf.outputs.elf-path }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Resolve paths
+      id: paths
+      shell: bash
+      run: |
+        echo "scripts-dir=${{ github.action_path }}/../../../skills/test-zmk-renode/scripts" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Renode install
+      uses: actions/cache@v4
+      with:
+        path: ~/.renode
+        key: renode-${{ inputs.renode-version }}-${{ runner.os }}
+
+    - name: Install Renode
+      shell: bash
+      run: bash "${{ steps.paths.outputs.scripts-dir }}/install_renode.sh" "${{ inputs.renode-version }}"
+
+    - name: Install Python + protoc dependencies
+      shell: bash
+      run: |
+        python3 -m pip install --quiet --upgrade protobuf
+        if ! command -v protoc >/dev/null 2>&1; then
+          if command -v apt-get >/dev/null 2>&1; then
+            (sudo apt-get update -y && sudo apt-get install -y protobuf-compiler) \
+              || (apt-get update -y && apt-get install -y protobuf-compiler)
+          fi
+        fi
+        protoc --version
+
+    - name: Build firmware
+      if: ${{ inputs.elf-path == '' }}
+      id: build
+      shell: bash
+      run: |
+        args=(
+          --west-topdir "${{ inputs.west-topdir }}"
+          --board "${{ inputs.board }}"
+          --shield "${{ inputs.shield }}"
+          --zmk-config "${{ inputs.zmk-config }}"
+          --overlay "${{ inputs.overlay }}"
+        )
+        if [ -n "${{ inputs.zmk-app }}" ]; then
+          args+=(--zmk-app "${{ inputs.zmk-app }}")
+        fi
+        # NB: --flag=value (not "--flag value") for module-paths/cmake-args --
+        # cmake-args in particular start with "-D", which argparse would
+        # otherwise misparse as a new option rather than this one's value.
+        while IFS= read -r line; do
+          [ -n "$line" ] && args+=(--module-path="$line")
+        done <<< "${{ inputs.module-paths }}"
+        while IFS= read -r line; do
+          [ -n "$line" ] && args+=(--cmake-arg="$line")
+        done <<< "${{ inputs.cmake-args }}"
+        elf="$(python3 "${{ steps.paths.outputs.scripts-dir }}/build_fw.py" "${args[@]}" --quiet)"
+        echo "elf=$elf" >> "$GITHUB_OUTPUT"
+
+    - name: Resolve ELF path
+      id: resolve-elf
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.elf-path }}" ]; then
+          echo "elf-path=${{ inputs.elf-path }}" >> "$GITHUB_OUTPUT"
+        else
+          echo "elf-path=${{ steps.build.outputs.elf }}" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Generic smoke test (boot + core Studio RPC)
+      shell: bash
+      run: |
+        python3 "${{ steps.paths.outputs.scripts-dir }}/renode_smoke.py" \
+          --elf "${{ steps.resolve-elf.outputs.elf-path }}" \
+          --west-topdir "${{ inputs.west-topdir }}" \
+          --renode-version "${{ inputs.renode-version }}" \
+          --boot-timeout "${{ inputs.boot-timeout-seconds }}"
+
+    - name: Module's own Renode tests
+      if: ${{ inputs.tests != '' }}
+      shell: bash
+      env:
+        ZMK_RENODE_ELF: ${{ steps.resolve-elf.outputs.elf-path }}
+      run: |
+        export PYTHONPATH="${{ steps.paths.outputs.scripts-dir }}${PYTHONPATH:+:$PYTHONPATH}"
+        tests_dir="${{ inputs.west-topdir }}/${{ inputs.tests }}"
+        found=0
+        for f in "$tests_dir"/*_test.py; do
+          [ -e "$f" ] || continue
+          found=1
+          echo "::group::python3 $f -v"
+          python3 "$f" -v
+          echo "::endgroup::"
+        done
+        if [ "$found" -eq 0 ]; then
+          echo "::warning::no *_test.py files found directly under $tests_dir"
+        fi
