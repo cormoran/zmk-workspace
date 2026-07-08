@@ -26,15 +26,25 @@ URL="https://github.com/renode/renode/releases/download/v${VERSION}/${TARBALL}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-# curl OR wget -- e.g. the zmkfirmware/zmk-build-arm:stable CI container has
-# wget but not curl.
+# curl, wget, or python3 -- the zmkfirmware/zmk-build-arm:stable CI container
+# has NEITHER curl nor wget, but always has python3 (west needs it).
 fetch() {
   if command -v curl >/dev/null 2>&1; then
     curl -fSL "$1" -o "$2"
   elif command -v wget >/dev/null 2>&1; then
     wget -q -O "$2" "$1"
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 - "$1" "$2" <<'PYEOF'
+import sys, urllib.request
+url, dest = sys.argv[1], sys.argv[2]
+try:
+    urllib.request.urlretrieve(url, dest)
+except Exception as err:
+    print(f"download failed: {err}", file=sys.stderr)
+    sys.exit(1)
+PYEOF
   else
-    echo "ERROR: neither curl nor wget is available" >&2
+    echo "ERROR: none of curl/wget/python3 are available" >&2
     return 1
   fi
 }
