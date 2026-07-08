@@ -26,12 +26,25 @@ URL="https://github.com/renode/renode/releases/download/v${VERSION}/${TARBALL}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
+# curl OR wget -- e.g. the zmkfirmware/zmk-build-arm:stable CI container has
+# wget but not curl.
+fetch() {
+  if command -v curl >/dev/null 2>&1; then
+    curl -fSL "$1" -o "$2"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -q -O "$2" "$1"
+  else
+    echo "ERROR: neither curl nor wget is available" >&2
+    return 1
+  fi
+}
+
 echo "downloading $URL" >&2
-if ! curl -fSL "$URL" -o "$TMP/$TARBALL"; then
+if ! fetch "$URL" "$TMP/$TARBALL"; then
   TARBALL="renode-${VERSION}.linux-portable-dotnet.tar.gz"
   URL="https://github.com/renode/renode/releases/download/v${VERSION}/${TARBALL}"
   echo "falling back to $URL" >&2
-  curl -fSL "$URL" -o "$TMP/$TARBALL"
+  fetch "$URL" "$TMP/$TARBALL"
 fi
 
 mkdir -p "$DEST"
