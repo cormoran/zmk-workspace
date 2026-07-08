@@ -27,13 +27,27 @@ from pathlib import Path
 # rpc_client.py lives next to this file regardless of caller's sys.path
 # setup (the composite action puts this scripts/ dir on PYTHONPATH, but we
 # don't want to *require* that for rpc_client specifically).
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+SCRIPTS_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPTS_DIR))
 from rpc_client import RpcSocket, frame  # noqa: E402  (re-exported for callers)
+
+# This module always lives at <skill>/scripts/renode_harness.py, so the
+# skill's platforms/ dir (single.resc, split_wired.resc, the .repl) and
+# install_renode.sh are reachable relative to it -- true whether this file
+# is imported from inside the skill's own workspace or, via PYTHONPATH, from
+# a consuming module repo's own test suite (the composite action checks out
+# this whole zmk-workspace repo and points PYTHONPATH at this scripts/ dir).
+SKILL_DIR = SCRIPTS_DIR.parent
+PLATFORMS_DIR = SKILL_DIR / "platforms"
+INSTALL_RENODE_SCRIPT = SCRIPTS_DIR / "install_renode.sh"
 
 RENODE_VERSION_DEFAULT = "1.16.1"
 
 __all__ = [
     "RENODE_VERSION_DEFAULT",
+    "SKILL_DIR",
+    "PLATFORMS_DIR",
+    "INSTALL_RENODE_SCRIPT",
     "RpcSocket",
     "frame",
     "renode_root",
@@ -45,6 +59,7 @@ __all__ = [
     "compile_protos",
     "load_studio_pb2",
     "find_studio_proto_dir",
+    "boot_single",
 ]
 
 
@@ -58,16 +73,19 @@ def renode_root() -> Path:
 
 
 def find_or_install_renode(
-    install_script: Path, version: str = RENODE_VERSION_DEFAULT
+    install_script: Path | None = None, version: str = RENODE_VERSION_DEFAULT
 ) -> str | None:
     """Return the path to the Renode launcher, installing it via
-    `install_script` (install_renode.sh) if it's not already present under
-    `renode_root()/<version>/renode`. Returns None if neither is possible
+    `install_script` (install_renode.sh, defaults to this skill's own copy)
+    if it's not already present under `renode_root()/<version>/renode`.
+    Returns None if neither is possible
     (caller should skip/fail accordingly)."""
     launcher = renode_root() / version / "renode"
     if launcher.is_file() and os.access(launcher, os.X_OK):
         return str(launcher)
 
+    if install_script is None:
+        install_script = INSTALL_RENODE_SCRIPT
     if not install_script.is_file():
         return None
 
@@ -312,3 +330,46 @@ def load_studio_pb2(proto_dir: Path):
     import studio_pb2  # type: ignore
 
     return studio_pb2
+
+
+# --------------------------------------------------------------------------
+# Convenience: boot a single-board ELF using platforms/single.resc.
+# --------------------------------------------------------------------------
+
+
+def boot_single(
+    renode_path: str,
+    elf: Path,
+    boot_wait: float = 3.0,
+    port_base: int | None = None,
+) -> tuple["RenodeSession", "RpcSocket", "RpcSocket"]:
+    """Boot `elf` under Renode using this skill's platforms/single.resc
+    (console on uart0, Studio RPC on uart1 -- see overlays/studio-rpc-uart.overlay).
+    Returns (session, console_socket, rpc_socket); caller is responsible for
+    calling session.stop() (and closing the sockets) when done, e.g. via
+    unittest's addCleanup or a try/finally. Does NOT wait for the boot
+    banner or start the emulation running -- call session.go() is already
+    done here, but asserting on the banner/RPC round-trip is left to the
+    caller since expectations differ per test.
+    """
+    if port_base is None:
+        import random
+
+        port_base = random.randint(26000, 40000)
+
+    session = RenodeSession(
+        renode_path,
+        PLATFORMS_DIR / "single.resc",
+        monitor_port=port_base,
+        variables={
+            "bin": f"@{elf}",
+            "console_port": port_base + 1,
+            "rpc_port": port_base + 2,
+        },
+        cwd=SKILL_DIR,
+    )
+    session.start(boot_wait=boot_wait)
+    console = session.connect_uart(port_base + 1)
+    rpc = session.connect_uart(port_base + 2)
+    session.go()
+    return session, console, rpc

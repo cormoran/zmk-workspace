@@ -34,7 +34,6 @@ import sys
 from pathlib import Path
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
-SKILL_DIR = SCRIPTS_DIR.parent
 
 sys.path.insert(0, str(SCRIPTS_DIR))
 import renode_harness  # noqa: E402
@@ -50,66 +49,38 @@ def run_smoke(
 ) -> None:
     studio_pb2 = renode_harness.load_studio_pb2(studio_proto_dir)
 
-    import random
-
-    port_base = random.randint(26000, 40000)
-    session = renode_harness.RenodeSession(
-        renode_path,
-        SKILL_DIR / "platforms" / "single.resc",
-        monitor_port=port_base,
-        variables={
-            "bin": f"@{elf}",
-            "console_port": port_base + 1,
-            "rpc_port": port_base + 2,
-        },
-        cwd=SKILL_DIR,
-    )
-    session.start()
+    session, console, rpc = renode_harness.boot_single(renode_path, elf)
     try:
-        console = session.connect_uart(port_base + 1)
-        try:
-            rpc = session.connect_uart(port_base + 2)
-            try:
-                session.go()
+        print("waiting for ZMK boot banner...", file=sys.stderr)
+        banner = renode_harness.wait_for_text(console._sock, "Welcome to ZMK", timeout=boot_timeout)
+        if "Welcome to ZMK" not in banner:
+            raise AssertionError(f"never saw ZMK boot banner on console UART; got:\n{banner}")
+        print("boot banner OK", file=sys.stderr)
 
-                print("waiting for ZMK boot banner...", file=sys.stderr)
-                banner = renode_harness.wait_for_text(
-                    console._sock, "Welcome to ZMK", timeout=boot_timeout
-                )
-                if "Welcome to ZMK" not in banner:
-                    raise AssertionError(
-                        f"never saw ZMK boot banner on console UART; got:\n{banner}"
-                    )
-                print("boot banner OK", file=sys.stderr)
+        req = studio_pb2.Request()
+        req.request_id = 1
+        req.core.get_device_info = True
+        rpc.send(req.SerializeToString())
+        resp_bytes = rpc.read_frame(timeout=rpc_timeout)
+        if resp_bytes is None:
+            raise AssertionError("no Studio RPC response frame received (timeout)")
 
-                req = studio_pb2.Request()
-                req.request_id = 1
-                req.core.get_device_info = True
-                rpc.send(req.SerializeToString())
-                resp_bytes = rpc.read_frame(timeout=rpc_timeout)
-                if resp_bytes is None:
-                    raise AssertionError("no Studio RPC response frame received (timeout)")
-
-                resp = studio_pb2.Response()
-                resp.ParseFromString(resp_bytes)
-                if resp.WhichOneof("type") != "request_response":
-                    raise AssertionError(
-                        f"expected a request_response, got {resp.WhichOneof('type')!r}"
-                    )
-                if resp.request_response.WhichOneof("subsystem") != "core":
-                    raise AssertionError(
-                        "expected core subsystem in response, got "
-                        f"{resp.request_response.WhichOneof('subsystem')!r}"
-                    )
-                name = resp.request_response.core.get_device_info.name
-                if expect_name_nonempty and not name:
-                    raise AssertionError("GetDeviceInfoResponse.name was empty")
-                print(f"core Studio RPC GetDeviceInfo OK (name={name!r})", file=sys.stderr)
-            finally:
-                rpc.close()
-        finally:
-            console.close()
+        resp = studio_pb2.Response()
+        resp.ParseFromString(resp_bytes)
+        if resp.WhichOneof("type") != "request_response":
+            raise AssertionError(f"expected a request_response, got {resp.WhichOneof('type')!r}")
+        if resp.request_response.WhichOneof("subsystem") != "core":
+            raise AssertionError(
+                "expected core subsystem in response, got "
+                f"{resp.request_response.WhichOneof('subsystem')!r}"
+            )
+        name = resp.request_response.core.get_device_info.name
+        if expect_name_nonempty and not name:
+            raise AssertionError("GetDeviceInfoResponse.name was empty")
+        print(f"core Studio RPC GetDeviceInfo OK (name={name!r})", file=sys.stderr)
     finally:
+        rpc.close()
+        console.close()
         session.stop()
 
 
@@ -138,9 +109,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         proto_dir = renode_harness.find_studio_proto_dir(args.west_topdir)
 
-    renode_path = renode_harness.find_or_install_renode(
-        SCRIPTS_DIR / "install_renode.sh", args.renode_version
-    )
+    renode_path = renode_harness.find_or_install_renode(version=args.renode_version)
     if renode_path is None:
         print("Renode is not installed and could not be auto-installed", file=sys.stderr)
         return 2

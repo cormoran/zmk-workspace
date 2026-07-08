@@ -96,6 +96,54 @@ signature (skipped by default; `RENODE_ZMK_RUN_T3=1` to run it) so a future
 session has a concrete, automated starting point instead of rediscovering
 it from scratch.
 
+## Reusable Renode CI Action (for other module repos)
+
+This skill's harness is also exposed as a reusable composite GitHub Action,
+`.github/actions/zmk-renode-test/`, so any ZMK module repo can boot its own
+firmware in Renode and run its own tests in CI without depending on this
+skill's specific workspace layout. See that directory's README for the
+inputs/usage snippet, and `scripts/renode_harness.py` /
+`scripts/renode_smoke.py` / `scripts/build_fw.py`'s generic (non-`--role`)
+mode for the importable/parameterized pieces the action wires together.
+`zmk-module-template-with-custom-studio-rpc`'s `tests/renode/` is the
+worked example.
+
+### Discovered while bringing up the template's custom-RPC test: a real, non-Renode firmware bug
+
+Bringing up `zmk-module-template-with-custom-studio-rpc`'s own
+`tests/renode/renode_test.py` (exercising its custom Studio RPC subsystem,
+not just core RPC) surfaced a genuine, reproducible bug in the vendored
+"custom-studio-protocol" ZMK fork that template depends on — **confirmed
+NOT a Renode artifact** (verified with byte-paced UART delivery bypassing
+any burst/timing sensitivity, and with Renode's monitor —
+`sysbus.cpu ExecutedInstructions` growing at a steady ~5×10⁸/s and
+`sysbus.cpu PC` sampled repeatedly inside `ring_buf_area_claim`/
+`ring_buf_area_finish` — to rule out a blocked/sleeping thread):
+
+Any Studio RPC response that goes through a *registered* custom
+subsystem's callback-based response encoding
+(`ZMK_RPC_CUSTOM_SUBSYSTEM_RESPONSE_BUFFER_ALLOCATE` /
+`zmk_rpc_custom_subsystem_encode_response_payload`, vendored
+`dependencies/zmk/app/include/zmk/studio/custom.h` +
+`.../src/studio/custom_subsystem.c`) makes `studio_rpc_thread` spin forever
+inside `rpc_tx_buffer_write`'s `ring_buf_put_claim`/`ring_buf_put_finish`
+loop (vendored `.../src/studio/rpc.c`). Reproduces identically for a real,
+successful response *and* a module's own tiny decode-failure
+`ErrorResponse` — i.e. it's not about response size, only about whether a
+*real* registered subsystem's callback-encoding path is exercised at all.
+`custom.call` to a subsystem index that doesn't exist takes a different,
+callback-free fast path (`meta.simple_error`/`RPC_NOT_FOUND`) and works
+fine — proof the envelope/dispatch machinery itself (framing, oneof
+selection, index validation) is otherwise sound.
+
+This is a vendored-ZMK bug, out of scope to patch from a module template's
+own files or from this skill's harness. Per this skill's own convention for
+documented-but-not-chased-further findings (see T3 above), the template's
+test captures this as an assertion of the *known failure* rather than a
+silent skip, so a future upstream fix makes it start failing loudly. See
+`zmk-module-template-with-custom-studio-rpc/tests/renode/renode_test.py`'s
+module docstring for the full repro/localization write-up.
+
 ## Key Gotchas (see `references/renode-notes.md` for the full detail)
 
 1. **QSPI and USB must both be disabled in the devicetree overlay, not just

@@ -106,11 +106,22 @@ def build_env() -> dict:
 # board's default USB-CDC path, and the board's "CDC ACM as serial backend"
 # Kconfig cascade turned off (it silently re-enables USB_DEVICE_STACK and
 # hangs the same way even with our overlay's DT nodes disabled).
+#
+# CONFIG_LOG_PROCESS_THREAD_STARTUP_DELAY_MS=0 (Zephyr's own default;
+# included here defensively) matters more under Renode than on real
+# hardware: a board/shield config that raises this delay (e.g. to avoid
+# spamming a slow real UART during early boot) combined with a shield that
+# fires several synthetic boot-time kscan events at DBG log level can
+# overflow the deferred log ring buffer before the processing thread ever
+# starts, silently dropping the boot banner itself ("--- N messages
+# dropped ---" with nothing before it) -- discovered generalizing this
+# harness to a module whose test config set the delay to 5000ms.
 COMMON_ARGS = [
     "-DCONFIG_ZMK_USB=n",
     "-DCONFIG_ZMK_BLE=n",
     "-DCONFIG_BOARD_SERIAL_BACKEND_CDC_ACM=n",
     "-DCONFIG_LOG=y",
+    "-DCONFIG_LOG_PROCESS_THREAD_STARTUP_DELAY_MS=0",
     "-DCONFIG_CONSOLE=y",
     "-DCONFIG_UART_CONSOLE=y",
     "-DCONFIG_UART_INTERRUPT_DRIVEN=y",
