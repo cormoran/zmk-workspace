@@ -55,6 +55,40 @@ non-empty device name) → run the module's own `tests` dir if given, with
   their module.
 - Guide docs (README + AGENTS.md) explaining the flow and how to extend it.
 
+## Implementation status (2026-07-08)
+
+Implemented as designed, with the details below refined during bring-up:
+
+- `scripts/renode_harness.py`, generalized `scripts/build_fw.py` (both
+  `--role` skill-compat and generic `--west-topdir`/`--board`/... modes),
+  and `scripts/renode_smoke.py` all exist and are used by both this skill's
+  own regression suite and the action.
+- `.github/actions/zmk-renode-test/action.yml` implements the contract
+  below almost exactly as drafted; see that directory's `README.md` for the
+  final input list (added `west-topdir`, `zmk-app`, `boot-timeout-seconds`;
+  `elf-path` supports the two-job fallback). One practical gotcha not
+  anticipated below: the action's `module-paths`/`cmake-args` inputs must
+  be passed to `build_fw.py` as `--flag=value` (not `--flag value`) since
+  cmake args start with `-D`, which argparse otherwise misparses as a new
+  flag.
+- The template repo's `renode-test` CI job runs as a **single job** in
+  `zmkfirmware/zmk-build-arm:stable` (the container has `protoc`
+  installable via `apt-get` and Renode's portable Linux bundle ran fine
+  headless with `--disable-xwt`) — the two-job `elf-path` fallback was not
+  needed.
+- **Deviation from "the module's own custom RPC round trip, asserting the
+  expected SampleResponse value":** bringing up the template's own
+  `tests/renode/renode_test.py` found a genuine, reproducible bug in the
+  vendored custom-studio-protocol ZMK fork (confirmed not a Renode
+  artifact) — any response encoded via a *registered* custom subsystem's
+  callback-based response path hangs `studio_rpc_thread` forever. The
+  template's test therefore asserts the custom-subsystem *envelope and
+  dispatch* work end-to-end (via a call to a deliberately-invalid
+  subsystem index, which takes a different, working fast path) and
+  documents+asserts the known hang for the real round trip, rather than
+  asserting a real `SampleResponse`. See that test file's module docstring
+  and this skill's `SKILL.md` for the full repro/localization write-up.
+
 ## Constraints / knowns
 
 - The skill's own `renode_test.py` must stay green after the refactor
