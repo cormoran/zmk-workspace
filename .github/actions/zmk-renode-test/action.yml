@@ -1,71 +1,41 @@
 name: "ZMK Renode Test"
 description: >-
-  Build a ZMK module's firmware with the Renode Studio-RPC-over-UART overlay
-  and transport, boot it in the Renode emulator, run a generic boot + core
-  Studio RPC smoke test, and (optionally) the module's own Renode test
-  suite. See README.md in this directory for the full contract and a usage
-  example. Backed by skills/test-zmk-renode/ in this same repo -- read that
-  skill's SKILL.md / references/renode-notes.md for the underlying gotchas.
+  Boot an already-built ZMK module firmware ELF in the Renode emulator, run
+  a generic boot + core Studio RPC smoke test, and (optionally) the
+  module's own Renode test suite. This action does NOT build firmware --
+  the caller builds the Renode-testable ELF itself (as a normal
+  `build.yaml` artifact, using the `renode-studio-uart` snippet this repo
+  provides as a Zephyr module -- see README.md) and passes the resulting
+  path via `elf-path`. See README.md in this directory for the full
+  contract and a usage example. Backed by skills/test-zmk-renode/ in this
+  same repo -- read that skill's SKILL.md / references/renode-notes.md for
+  the underlying gotchas.
 
-# Path inputs (`west-topdir`, `zmk-config`, `zmk-app`, `module-paths`,
-# `elf-path`) may be relative; relative paths are resolved against
-# $GITHUB_WORKSPACE *inside the step* (NOT via the ${{ github.workspace }}
-# expression). This matters for container jobs: the expression evaluates to
-# the runner-host path (/home/runner/work/...) while the checkout is
-# mounted at /__w/... inside the container -- the env var is translated,
-# expressions are not (same actions/runner#716 family as action_path).
-# Prefer passing relative paths.
+# Path inputs (`west-topdir`, `elf-path`) may be relative; relative paths
+# are resolved against $GITHUB_WORKSPACE *inside the step* (NOT via the
+# ${{ github.workspace }} expression). This matters for container jobs: the
+# expression evaluates to the runner-host path (/home/runner/work/...)
+# while the checkout is mounted at /__w/... inside the container -- the env
+# var is translated, expressions are not (same actions/runner#716 family as
+# action_path). Prefer passing relative paths.
 inputs:
   west-topdir:
     description: >-
       Path to the consuming module's own west workspace root (its checkout,
       for a module with an embedded workspace -- the default `west topdir`
-      layout this action was built against). Default: the workspace root.
+      layout this action was built against). Used only to locate the
+      caller's west dependencies for compiling studio protos (the smoke
+      test) -- NOT for building firmware. Default: the workspace root.
     required: false
     default: "."
-  board:
-    description: "Target board triplet."
-    default: "xiao_ble//zmk"
-  shield:
-    description: "Shield to build (passed as -DSHIELD=...)."
-    required: true
-  zmk-config:
-    description: "Path to the ZMK_CONFIG dir (keymap/conf overlays)."
-    required: true
-  zmk-app:
-    description: >-
-      Override the `-s` app dir passed to `west build`. Defaults to
-      `<west-topdir>/dependencies/zmk/app`.
-    required: false
-    default: ""
-  module-paths:
-    description: >-
-      Extra ZMK_EXTRA_MODULES entries, one per line (the module repo
-      itself, its own tests/zmk-config dir, sibling feature modules, ...).
-      The Renode Studio-RPC-over-UART transport module is always appended
-      automatically; do not list it here.
-    required: false
-    default: ""
-  cmake-args:
-    description: >-
-      Extra `-D...` cmake args, one per line (module feature flags, e.g.
-      `-DCONFIG_ZMK_TEMPLATE_FEATURE=y`). CONFIG_ZMK_STUDIO=y is NOT added
-      automatically -- include it here if the build under test needs Studio
-      RPC at all.
-    required: false
-    default: ""
-  overlay:
-    description: >-
-      'studio-rpc-uart' (default, T0/T1-style single board), 'split-wired-uart',
-      or a path (relative to `west-topdir`) to a custom devicetree overlay.
-    default: "studio-rpc-uart"
   elf-path:
     description: >-
-      Skip the build step and use this prebuilt ELF instead (for the
-      two-job build-then-test split described in CI_DESIGN.md, if Renode
-      can't run in the same container the build does).
-    required: false
-    default: ""
+      Path to the already-built firmware ELF to test (relative paths are
+      resolved against $GITHUB_WORKSPACE). The caller is responsible for
+      building this -- typically a `build.yaml` artifact built with the
+      `renode-studio-uart` snippet (see README.md) in an earlier workflow
+      step.
+    required: true
   tests:
     description: >-
       Path (relative to `west-topdir`) to a directory of the module's own
@@ -83,7 +53,7 @@ inputs:
 
 outputs:
   elf-path:
-    description: "Absolute path to the (built or prebuilt) firmware ELF."
+    description: "Absolute path to the (caller-built) firmware ELF."
     value: ${{ steps.resolve-elf.outputs.elf-path }}
 
 runs:
@@ -140,17 +110,14 @@ runs:
         fi
         protoc --version
 
-    - name: Resolve module paths
-      id: mod
+    - name: Resolve ELF + west-topdir paths
+      id: resolve-elf
       shell: bash
       # Resolve every (possibly relative) path input against
       # $GITHUB_WORKSPACE -- the env var, which is container-path-translated,
       # unlike the ${{ github.workspace }} expression (see the header note).
       env:
         IN_WEST_TOPDIR: ${{ inputs.west-topdir }}
-        IN_ZMK_CONFIG: ${{ inputs.zmk-config }}
-        IN_ZMK_APP: ${{ inputs.zmk-app }}
-        IN_MODULE_PATHS: ${{ inputs.module-paths }}
         IN_ELF_PATH: ${{ inputs.elf-path }}
       run: |
         abspath() {
@@ -160,71 +127,19 @@ runs:
           esac
         }
         echo "west-topdir=$(abspath "$IN_WEST_TOPDIR")" >> "$GITHUB_OUTPUT"
-        echo "zmk-config=$(abspath "$IN_ZMK_CONFIG")" >> "$GITHUB_OUTPUT"
-        if [ -n "$IN_ZMK_APP" ]; then
-          echo "zmk-app=$(abspath "$IN_ZMK_APP")" >> "$GITHUB_OUTPUT"
-        else
-          echo "zmk-app=" >> "$GITHUB_OUTPUT"
+        elf_path="$(abspath "$IN_ELF_PATH")"
+        if [ ! -f "$elf_path" ]; then
+          echo "::error::elf-path does not exist: $elf_path (this action does not build firmware -- build it as a normal step before calling this action; see README.md)"
+          exit 1
         fi
-        if [ -n "$IN_ELF_PATH" ]; then
-          echo "elf-path=$(abspath "$IN_ELF_PATH")" >> "$GITHUB_OUTPUT"
-        else
-          echo "elf-path=" >> "$GITHUB_OUTPUT"
-        fi
-        {
-          echo "module-paths<<MODPATHS_EOF"
-          while IFS= read -r line; do
-            [ -n "$line" ] && abspath "$line"
-          done <<< "$IN_MODULE_PATHS"
-          echo "MODPATHS_EOF"
-        } >> "$GITHUB_OUTPUT"
-
-    - name: Build firmware
-      if: ${{ inputs.elf-path == '' }}
-      id: build
-      shell: bash
-      env:
-        IN_MODULE_PATHS: ${{ steps.mod.outputs.module-paths }}
-        IN_CMAKE_ARGS: ${{ inputs.cmake-args }}
-      run: |
-        args=(
-          --west-topdir "${{ steps.mod.outputs.west-topdir }}"
-          --board "${{ inputs.board }}"
-          --shield "${{ inputs.shield }}"
-          --zmk-config "${{ steps.mod.outputs.zmk-config }}"
-          --overlay "${{ inputs.overlay }}"
-        )
-        if [ -n "${{ steps.mod.outputs.zmk-app }}" ]; then
-          args+=(--zmk-app "${{ steps.mod.outputs.zmk-app }}")
-        fi
-        # NB: --flag=value (not "--flag value") for module-paths/cmake-args --
-        # cmake-args in particular start with "-D", which argparse would
-        # otherwise misparse as a new option rather than this one's value.
-        while IFS= read -r line; do
-          [ -n "$line" ] && args+=(--module-path="$line")
-        done <<< "$IN_MODULE_PATHS"
-        while IFS= read -r line; do
-          [ -n "$line" ] && args+=(--cmake-arg="$line")
-        done <<< "$IN_CMAKE_ARGS"
-        elf="$(python3 "${{ steps.paths.outputs.scripts-dir }}/build_fw.py" "${args[@]}" --quiet)"
-        echo "elf=$elf" >> "$GITHUB_OUTPUT"
-
-    - name: Resolve ELF path
-      id: resolve-elf
-      shell: bash
-      run: |
-        if [ -n "${{ steps.mod.outputs.elf-path }}" ]; then
-          echo "elf-path=${{ steps.mod.outputs.elf-path }}" >> "$GITHUB_OUTPUT"
-        else
-          echo "elf-path=${{ steps.build.outputs.elf }}" >> "$GITHUB_OUTPUT"
-        fi
+        echo "elf-path=$elf_path" >> "$GITHUB_OUTPUT"
 
     - name: Generic smoke test (boot + core Studio RPC)
       shell: bash
       run: |
         python3 "${{ steps.paths.outputs.scripts-dir }}/renode_smoke.py" \
           --elf "${{ steps.resolve-elf.outputs.elf-path }}" \
-          --west-topdir "${{ steps.mod.outputs.west-topdir }}" \
+          --west-topdir "${{ steps.resolve-elf.outputs.west-topdir }}" \
           --renode-version "${{ inputs.renode-version }}" \
           --boot-timeout "${{ inputs.boot-timeout-seconds }}"
 
@@ -235,7 +150,7 @@ runs:
         ZMK_RENODE_ELF: ${{ steps.resolve-elf.outputs.elf-path }}
       run: |
         export PYTHONPATH="${{ steps.paths.outputs.scripts-dir }}${PYTHONPATH:+:$PYTHONPATH}"
-        tests_dir="${{ steps.mod.outputs.west-topdir }}/${{ inputs.tests }}"
+        tests_dir="${{ steps.resolve-elf.outputs.west-topdir }}/${{ inputs.tests }}"
         found=0
         for f in "$tests_dir"/*_test.py; do
           [ -e "$f" ] || continue

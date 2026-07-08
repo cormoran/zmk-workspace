@@ -101,12 +101,35 @@ it from scratch.
 This skill's harness is also exposed as a reusable composite GitHub Action,
 `.github/actions/zmk-renode-test/`, so any ZMK module repo can boot its own
 firmware in Renode and run its own tests in CI without depending on this
-skill's specific workspace layout. See that directory's README for the
-inputs/usage snippet, and `scripts/renode_harness.py` /
-`scripts/renode_smoke.py` / `scripts/build_fw.py`'s generic (non-`--role`)
-mode for the importable/parameterized pieces the action wires together.
-`zmk-module-template-with-custom-studio-rpc`'s `tests/renode/` is the
-worked example.
+skill's specific workspace layout. **The action itself does not build
+firmware** — a module's own build flow builds the Renode-testable ELF (as a
+normal `build.yaml` artifact) and passes the resulting path via `elf-path`;
+the action only installs Renode, boots that ELF, and runs the smoke +
+module tests. See that directory's README for the inputs/usage snippet.
+
+Building the ELF needs two things this skill provides, both wired together
+as a normal Zephyr module via this repo's root-level `zephyr/module.yml`
+(`name: zmk-workspace-renode-testing`) so any consumer that adds
+`zmk-workspace` as a (test-only) west dependency gets them for free:
+
+- The `renode-studio-uart` Zephyr snippet
+  (`skills/test-zmk-renode/snippets/renode-studio-uart/`), applied with
+  `-S renode-studio-uart` / a `snippets:` entry in `build.yaml` — carries
+  the same DT overlay + Kconfig this skill's own `build_fw.py` sets via raw
+  cmake args (see that script's `COMMON_ARGS`/`STUDIO_TRANSPORT_ARGS` for
+  the authoritative, commented list; keep the two in sync).
+- The Renode-only Studio RPC UART transport
+  (`skills/test-zmk-renode/renode-test-module/`), registered via that same
+  root module.yml's `build.cmake`/`build.kconfig` (its own nested
+  `zephyr/module.yml` still exists too, for the older standalone
+  `ZMK_EXTRA_MODULES` pattern `build_fw.py`'s local role-based builds use —
+  the two don't conflict; see `CI_DESIGN.md`).
+
+See `scripts/renode_harness.py` / `scripts/renode_smoke.py` for the
+importable/parameterized pieces the action wires together for the test
+side. `zmk-module-template-with-custom-studio-rpc`'s `tests/renode/` and
+`tests/zmk-config/build.yaml`'s `renode_smoke_test` artifact are the worked
+example of both halves (build + test).
 
 ### Known Renode limitation: larger custom-subsystem RPC responses stall
 
@@ -198,25 +221,40 @@ differential write-up.
 
 ```
 DESIGN.md                 - the original bring-up plan (tiers, rationale)
+CI_DESIGN.md               - the reusable-CI-action design (zmk-workspace as a west module)
 EXPERIMENT_LOG.md          - chronological narrative of what was tried
 references/renode-notes.md - distilled, reusable gotchas (read this first
                               if you're debugging a new hang/silence)
 overlays/
   studio-rpc-uart.overlay  - T0/T1: console=uart0, Studio RPC=uart1, qspi+usb disabled
   split-wired-uart.overlay - T2: console=uart0, zmk,wired-split=uart1, qspi+usb disabled
+snippets/
+  renode-studio-uart/       - Zephyr snippet version of studio-rpc-uart.overlay + the
+                              Kconfig build_fw.py sets via cmake args -- what CI consumers
+                              apply directly (nRF52840/XIAO-specific, see its own header)
 platforms/
   xiao_nrf52840.repl       - checked-in copy of Renode's nRF52840 platform description
   single.resc              - T0/T1: one machine, two UART sockets (console, RPC)
   split_wired.resc         - T2: two machines, UART hub cross-connecting their split UARTs
 renode-test-module/        - small additive Zephyr module: the ZMK_TRANSPORT_NONE
                               Studio RPC UART transport that makes T1 possible
-                              without real USB (see gotcha #2 above)
+                              without real USB (see gotcha #2 above); also registered via
+                              ../../zephyr/module.yml (this repo's root) for CI consumers
 scripts/
   install_renode.sh         - fetch Renode portable
   build_fw.py                - wraps `west build` with all the flags this doc explains
+                              (local/skill use only -- the CI action no longer calls this)
   renode_test.py             - the orchestrator/test suite (unittest-based)
   rpc_client.py               - Studio RPC framing over a TCP socket (reused, unmodified)
 ```
+
+Note: `../../zephyr/module.yml` (this repo's own root-level Zephyr module
+manifest, `name: zmk-workspace-renode-testing`) lives outside this skill
+directory, at the zmk-workspace repo root, since Zephyr module discovery
+requires `zephyr/module.yml` at a west project's root. It registers
+`renode-test-module/` (cmake+kconfig) and this skill's `snippets/` dir
+(`snippet_root`) so any repo with `zmk-workspace` as a west dependency
+picks up both automatically. See `CI_DESIGN.md` for the full story.
 
 ## Honesty Check
 

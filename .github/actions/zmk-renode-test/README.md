@@ -1,40 +1,76 @@
 # zmk-renode-test
 
-Reusable composite GitHub Action: builds a ZMK module's firmware with the
-Renode-only Studio-RPC-over-UART overlay + transport (real hardware uses
-USB; Renode's USB model is a non-functional register stub, so testing under
-emulation swaps in a wired-UART carrier with identical RPC framing), boots
-it in the [Renode](https://renode.io/) emulator, runs a generic boot + core
-Studio RPC smoke test, and (optionally) the consuming module's own Renode
-test suite. Backed by `skills/test-zmk-renode/` in this same repo — read
-that skill's `SKILL.md` and `references/renode-notes.md` for the gotchas
-this action's steps exist to work around (silent boot hangs, one-client
-UART sockets, the USB-gated transport, etc.).
+Reusable composite GitHub Action: boots an **already-built** ZMK module
+firmware ELF in the [Renode](https://renode.io/) emulator, runs a generic
+boot + core Studio RPC smoke test, and (optionally) the consuming module's
+own Renode test suite. Backed by `skills/test-zmk-renode/` in this same
+repo — read that skill's `SKILL.md` and `references/renode-notes.md` for the
+gotchas this action's steps exist to work around (silent boot hangs,
+one-client UART sockets, the USB-gated transport, etc.).
+
+**This action does not build firmware.** The caller builds the
+Renode-testable ELF itself, as a normal step in its own build flow (a
+`build.yaml` artifact, most naturally), and passes the resulting ELF path
+in via `elf-path`. This repo provides everything needed to build that ELF
+as a Zephyr module + snippet — see "Building the Renode-testable ELF"
+below.
+
+## Building the Renode-testable ELF
+
+Real hardware normally carries ZMK Studio RPC over USB-CDC-ACM. Renode's
+nRF52840 USBD model is a non-functional register stub (see
+`skills/test-zmk-renode/SKILL.md`), so a Renode-testable build needs:
+
+- The `renode-studio-uart` snippet (nRF52840/XIAO-specific — binds console
+  + Studio RPC to real UART peripherals instead of USB, and disables the
+  DT nodes whose init busy-waits forever under Renode: `&usbd`, `&qspi`,
+  `&p25q16h`).
+- The Renode-only `ZMK_TRANSPORT_NONE` Studio RPC UART transport
+  (`CONFIG_ZMK_RENODE_STUDIO_UART_TRANSPORT=y`), which the snippet's conf
+  file enables automatically (it bypasses the real transport's USB-HID
+  gate that Renode can never satisfy).
+
+Both are shipped as **this repo's own root-level Zephyr module**
+(`zephyr/module.yml`, `name: zmk-workspace-renode-testing`), so any
+consumer that has `zmk-workspace` as a west dependency gets the snippet and
+the transport module auto-discovered for free — no `ZMK_EXTRA_MODULES`
+wiring needed. Add it as a **test-only** west dependency (do not pull it
+into a module's real/published manifest), then build a normal artifact
+with the snippet applied, e.g. in `build.yaml`:
+
+```yaml
+- artifact: renode_smoke_test
+  board: xiao_ble//zmk
+  shield: tester_xiao
+  cmake-args: -DCONFIG_ZMK_STUDIO=y -DCONFIG_ZMK_TEMPLATE_FEATURE=y -DCONFIG_ZMK_TEMPLATE_FEATURE_STUDIO_RPC=y
+  snippets:
+    - renode-studio-uart
+```
+
+or directly with `west build -S renode-studio-uart ...` /
+`west zmk-build <config> -S renode-studio-uart`. This produces a normal
+`zephyr/zmk.elf` under the build directory — pass that path as `elf-path`
+below.
 
 ## Usage
 
 ```yaml
 jobs:
-  renode-test:
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 30 # building the extra Renode artifact + Renode itself takes longer than a plain build
     container:
       image: zmkfirmware/zmk-build-arm:stable
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/west-init  # your module's own west-init
+      - uses: ./.github/actions/west-init  # your module's own west-init (must resolve the zmk-workspace test dependency)
+
+      - name: Build (including the Renode-testable artifact)
+        run: python3 -m unittest -v # or `west zmk-build ...` -- whatever already builds build.yaml's artifacts
 
       - uses: cormoran/zmk-workspace/.github/actions/zmk-renode-test@<sha>
         with:
-          shield: tester_xiao
-          zmk-config: tests/zmk-config/config
-          module-paths: |
-            .
-            tests/zmk-config
-          cmake-args: |
-            -DCONFIG_ZMK_STUDIO=y
-            -DCONFIG_ZMK_TEMPLATE_FEATURE=y
-            -DCONFIG_ZMK_TEMPLATE_FEATURE_STUDIO_RPC=y
+          elf-path: build/renode_smoke_test/zephyr/zmk.elf
           tests: tests/renode
 ```
 
@@ -54,15 +90,8 @@ exist there (actions/runner#716).
 
 | Input | Required | Default | Description |
 |---|---|---|---|
-| `west-topdir` | no | `.` (workspace root) | The consuming module's own west workspace root (its checkout root, for a module with an embedded workspace). |
-| `board` | no | `xiao_ble//zmk` | Target board triplet. The only bring-up-validated board. |
-| `shield` | yes | — | Shield to build (`-DSHIELD=...`). |
-| `zmk-config` | yes | — | Path to the `ZMK_CONFIG` dir. |
-| `zmk-app` | no | `<west-topdir>/dependencies/zmk/app` | Override the `-s` app dir. |
-| `module-paths` | no | — | Extra `ZMK_EXTRA_MODULES` entries, one per line. The Renode transport module is always appended automatically. |
-| `cmake-args` | no | — | Extra `-D...` cmake args, one per line. `CONFIG_ZMK_STUDIO=y` is **not** implied — include it if Studio RPC is needed. |
-| `overlay` | no | `studio-rpc-uart` | `studio-rpc-uart`, `split-wired-uart`, or a path (relative to `west-topdir`) to a custom overlay. |
-| `elf-path` | no | — | Skip the build step and test this prebuilt ELF instead (for a two-job build→artifact→test split if Renode can't run in your build container). |
+| `west-topdir` | no | `.` (workspace root) | The consuming module's own west workspace root (its checkout root, for a module with an embedded workspace). Used only to locate the caller's west dependencies for compiling studio protos for the smoke test — **not** for building firmware. |
+| `elf-path` | yes | — | Path to the already-built firmware ELF to test. The caller builds this (see "Building the Renode-testable ELF" above) in an earlier step. |
 | `tests` | no | — | Path (relative to `west-topdir`) to a directory of the module's own Renode test files. Every `*_test.py` directly under it is run via `python3 <file> -v`. Leave empty to run only the generic smoke test. |
 | `renode-version` | no | `1.16.1` | Renode portable release to install (cached across runs). |
 | `boot-timeout-seconds` | no | `20` | Smoke test: seconds to wait for the ZMK boot banner. |
@@ -71,7 +100,7 @@ exist there (actions/runner#716).
 
 | Output | Description |
 |---|---|
-| `elf-path` | Absolute path to the (built or prebuilt) firmware ELF, for a later step to upload as an artifact etc. |
+| `elf-path` | Absolute path to the (caller-built) firmware ELF, resolved from the `elf-path` input. |
 
 ## What the generic smoke test checks
 
@@ -90,10 +119,10 @@ Renode/RPC plumbing and read the built ELF's path from `ZMK_RENODE_ELF`.
 
 ## Constraints
 
-- Runs `west build`, so it needs the Zephyr toolchain — run it in a
-  container with that available (e.g. `zmkfirmware/zmk-build-arm:stable`),
-  after your module's own west-init step.
-- If Renode itself can't run in that same container (missing shared libs),
-  build in one job, `actions/upload-artifact`/`download-artifact` the ELF,
-  and call this action in a second (plain `ubuntu-latest`) job with
-  `elf-path` set and no build inputs needed.
+- The caller must build the ELF itself before calling this action (this
+  action fails fast with a clear error if `elf-path` doesn't exist).
+- Renode itself must be able to run in whatever job/container calls this
+  action (this action installs + caches it there). If the container that
+  builds firmware can't also run Renode, build in that job, upload the ELF
+  as an artifact, and call this action from a second (plain `ubuntu-latest`)
+  job after downloading it.

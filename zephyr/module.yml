@@ -1,0 +1,6 @@
+name: zmk-workspace-renode-testing
+build:
+  cmake: skills/test-zmk-renode/renode-test-module
+  kconfig: skills/test-zmk-renode/renode-test-module/Kconfig
+  settings:
+    snippet_root: skills/test-zmk-renode
