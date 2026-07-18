@@ -1,5 +1,15 @@
 # zmk-renode-test
 
+> **DEPRECATED (2026-07-18).** This action, the Renode Zephyr module/snippet,
+> and the reusable harness scripts moved to
+> [cormoran/zmk-west-commands](https://github.com/cormoran/zmk-west-commands):
+> use `cormoran/zmk-west-commands/.github/actions/zmk-renode-test@main`
+> (backed by `west zmk-renode-test`) instead, with `zmk-west-commands` as a
+> test-only west dependency (`import: true`). This repo's root
+> `zephyr/module.yml` has been removed accordingly — do not add this repo as
+> a west dependency anymore. The copy below is kept for reference only and
+> will not receive fixes.
+
 Reusable composite GitHub Action: boots an **already-built** ZMK module
 firmware ELF in the [Renode](https://renode.io/) emulator, runs a generic
 boot + core Studio RPC smoke test, and (optionally) the consuming module's
