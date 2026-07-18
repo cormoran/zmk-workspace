@@ -5,6 +5,17 @@ description: Test a ZMK keyboard for the XIAO nRF52840 (Studio RPC + split) insi
 
 # Test ZMK In Renode (XIAO nRF52840, Studio RPC + Split)
 
+> **NOTE (2026-07-18):** the reusable parts of this skill (harness scripts
+> `renode_harness.py`/`rpc_client.py`/`renode_smoke.py`/`install_renode.sh`,
+> `platforms/`, the `renode-test-module` transport, the `renode-studio-uart`
+> snippet, and the GitHub Action) now live in
+> [cormoran/zmk-west-commands](https://github.com/cormoran/zmk-west-commands)
+> (`west zmk-renode-test` / `west zmk-ble-test`, `scripts/lib/renode/`).
+> Prefer those for module CI/testing; this repo's root `zephyr/module.yml`
+> was removed so this repo is no longer usable as a west dependency. The
+> copies under this skill remain for local rig experiments and as the
+> historical record (EXPERIMENT_LOG.md, renode-notes.md).
+
 ## What This Actually Emulates
 
 Renode is a functional (not cycle-accurate) full-system emulator. It runs
