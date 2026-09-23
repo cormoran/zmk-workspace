@@ -7,8 +7,7 @@
 !.devcontainer/
 !skills/
 !skills/**
-!zephyr/
-!zephyr/**
+!zephyr/module.yml
 !tools/
 !tools/**
 !docs/
