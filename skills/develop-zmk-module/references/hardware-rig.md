@@ -14,6 +14,28 @@
   /dev/stdin — write a real temp file.
 - Flash over SWD with `loadfile <build>/zephyr/zmk.hex` + `r` + `go`.
   NEVER `erase` (would remove the UF2 bootloader region).
+- **ALWAYS end a JLink command file with `go` (or `r`+`go`).** A file that
+  does `connect; halt; regs/mem32; q` leaves the core HALTED on exit — every
+  subsequent USB RPC call then times out and it looks exactly like a firmware
+  hang/freeze when it's just the debugger holding the CPU. This can send you
+  down a long false trail ("still hangs after the fix!"). After any
+  halt-to-inspect, resume with a `r`+`go` command file, and confirm a
+  suspected firmware hang with a clean run that involves NO JLink halt at all
+  before concluding anything. Corollary: to catch a *real* transient hang,
+  trigger the RPC in the background and halt within ~2 s (the host client
+  usually times out in 10–30 s, after which you only ever see the post-timeout
+  idle state — thread blocked in `pb_decode`/`rpc_main` waiting for the next
+  request, which is ambiguous).
+- **Timing-neutral RAM trace markers** beat logging when `CONFIG_LOG` masks a
+  race or the code path is silent: add a `volatile uint32_t g_trace;` set to
+  increasing step numbers along the path, build WITHOUT logging, reproduce,
+  then `mem32 <&g_trace> 1` during the stall. A marker of 0 proves the code
+  never ran (the real fault is upstream). `arm-zephyr-eabi-nm zmk.elf | grep
+  g_trace` for the address. To read a blocked thread's real stack, get its
+  saved PSP from `callee_saved.psp` in its `_k_thread_obj_*` (last word of the
+  9-word callee_saved block; the value that lands inside the thread's
+  `_k_thread_stack_*` range), then `savebin` from there up to the stack top and
+  resolve the return addresses (odd, in the code range) with `addr2line`.
 - **This unit's flash below 0x27000 contains stale non-bootloader firmware**
   ("Abyss Tester XIAO" era): a stock `xiao_ble` build linked at the default
   `code_partition` offset (0x27000, from

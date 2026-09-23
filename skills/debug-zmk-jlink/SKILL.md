@@ -49,6 +49,14 @@ Treat J-Link probe presence and SEGGER CLI availability as separate facts. A pro
 
 For XIAO BLE / nRF52840 targets, the J-Link device is usually `nRF52840_xxAA`, interface `SWD`, speed `4000`. Confirm the MCU from `build_info.yml` before using these defaults.
 
+## XIAO BLE DAP Power-Up Failure
+
+When a XIAO BLE is SWD-wired to J-Link and `JLinkExe` reports `Found SW-DP` followed by `Failed to power up DAP`, first confirm that the probe sees the target reference voltage and can read the SW-DP ID. This failure can occur when the J-Link was powered before the XIAO was connected to USB.
+
+Power-cycle the **J-Link probe** while leaving the XIAO connected to the PC, then retry the SWD connection. This restored a XIAO BLE / nRF52840 where J-Link reset, low-speed SWD, and target RESET did not. Do not erase or recover the target merely to address this symptom.
+
+For normal setup, connect the XIAO to the PC before powering or attaching the J-Link.
+
 ## Build Audit
 
 Run the audit helper after `$build-zmk-config`:
