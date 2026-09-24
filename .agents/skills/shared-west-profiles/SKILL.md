@@ -34,6 +34,9 @@ repository.
 - For ordinary module branches, profile creation, compatibility checks,
   dependency changes, and integration-only modules, read
   [references/module-worktrees.md](references/module-worktrees.md).
+- For building a consumer firmware with local changes to one of its West
+  dependencies (and possibly temporary consumer changes), read
+  [references/dependency-integration.md](references/dependency-integration.md).
 - For changes to ZMK itself, ZMK's own tests, or building another module
   against modified ZMK, read
   [references/zmk-development.md](references/zmk-development.md). The current
