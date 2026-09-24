@@ -88,6 +88,23 @@ If the repository uses a different test oracle (ztest/Twister, a Python RPC
 test, or a web test), make the equivalent expected result part of that
 oracle. Builds and compilation checks alone do not test runtime semantics.
 
+## CI completion loop
+
+After pushing the implementation branch and opening/updating its PR, monitor
+the PR checks until they complete; do not treat a locally passing test as the
+completion condition. Use `gh pr checks <pr-number> --watch --interval 10`
+or poll the current run with `gh run view <run-id>`. Keep individual blocking
+watch windows at 60 seconds or less and provide a short progress update while
+CI is still running.
+
+If a check fails, retrieve its failed-step log (`gh run view <run-id>
+--log-failed`) and diagnose the first actionable failure. Make the smallest
+scoped fix, reproduce the relevant CI command locally with the same manifest,
+module-discovery, board/shield/snippet, and test-oracle conditions, then
+commit, push, and resume monitoring. Repeat until all required checks are
+green, or report the concrete external blocker and the log evidence. Do not
+stop after merely triggering a replacement CI run.
+
 ## Known pitfalls (all hit in practice)
 
 - **nanopb**: set `has_<field> = true` for every sub-message; never use 64-bit
