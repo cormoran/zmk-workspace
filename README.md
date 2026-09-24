@@ -2,9 +2,11 @@
 
 [![Test ZMK templates](https://github.com/cormoran/zmk-workspace/actions/workflows/zmk-config.yml/badge.svg)](https://github.com/cormoran/zmk-workspace/actions/workflows/zmk-config.yml)
 
-This workspace provides a [Nix](https://nixos.org/) development environment for
-ZMK projects and tools for sharing a compatible West dependency checkout among
-module worktrees. Builds use the
+This workspace supports ZMK projects that use different Zephyr and ZMK
+versions at the same time. Each shared West profile keeps the dependency set
+for one Zephyr commit and ZMK branch, while compatible module worktrees reuse
+that profile. It also provides a [Nix](https://nixos.org/) development
+environment for ZMK projects. Builds use the
 [cormoran/zmk-west-commands](https://github.com/cormoran/zmk-west-commands)
 West extension.
 
