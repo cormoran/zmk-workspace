@@ -14,16 +14,27 @@ West extension.
 .
 ├── docs/       Documentation for the workspace and hardware setup
 ├── nix/        Nix development-shell definition
-├── projects/   Standalone source checkouts (ignored by Git)
+├── projects/   Standalone source checkouts used to initialize profiles
+│   └── <repo>/
+│       ├── .west/ and dependencies/   Initial standalone West workspace
+│       └── …                           Source repository
 ├── tools/      Workspace utilities, including shared_west.py
-├── ws/         Shared West profiles and their module worktrees
+├── ws/         Shared West profiles
+│   └── <profile>/
+│       ├── workspace-config/          Tracked profile manifest and metadata
+│       ├── zephyr/, zmk/, …            Shared West dependency checkouts
+│       └── wt-<repo>/<branch>/         Feature-branch Git worktrees
 └── zephyr/     Workspace Zephyr module metadata
 ```
 
-`projects/<repo>` is the source repository you initially clone and initialize.
-A shared profile in `ws/<profile>` contains one West dependency set. Feature
-branches live below `ws/<profile>/wt-<repo>/<branch>`, so compatible branches
-reuse that dependency set. The profile's `workspace-config/` is tracked; its
+Use `projects/<repo>` to clone a module and initialize its standalone West
+workspace. It is the source used to create a profile, and it remains available
+for standalone development. `projects/` is ignored by this repository.
+
+Use `ws/<profile>` for shared-profile development. A profile owns one set of
+West dependency checkouts. Create each feature branch in
+`wt-<repo>/<branch>`; compatible branches then build against the same
+dependencies. Only `workspace-config/` is tracked by this repository. The
 dependencies and worktrees are local files.
 
 ## Usage
