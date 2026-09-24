@@ -12,6 +12,19 @@
   verification reports, in `docs/local/`. This directory is ignored by Git;
   do not commit its contents.
 
+## zmk-workspace worktrees
+
+When creating a Git worktree of this `zmk-workspace` repository, share the
+main checkout's ignored `projects/` and `ws/` directories rather than creating
+per-worktree copies. Codex runs
+`.codex/hooks/link-shared-workspace-dirs.sh` on startup to create these
+symlinks automatically. For a worktree created outside Codex, run that script
+from the new worktree before doing ZMK work.
+
+The setup is idempotent. It only creates a missing link and refuses to replace
+an existing file, directory, or link to a different target. Do not remove or
+reinitialize the shared directories from a worktree.
+
 ## ZMK project work
 
 Before working on a ZMK project under this workspace, read

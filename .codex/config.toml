@@ -7,3 +7,14 @@ rules for dependency checks, placement, updates, and builds. For this
 zmk-workspace repository itself, edit the current checkout directly as
 specified in AGENTS.md.
 """
+
+# A managed worktree needs the local, ignored shared West state from the main
+# checkout. The hook is idempotent and refuses to replace a real directory.
+[[hooks.SessionStart]]
+matcher = "^startup$"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = 'bash "$(git rev-parse --show-toplevel)/.codex/hooks/link-shared-workspace-dirs.sh"'
+timeout = 15
+statusMessage = "Linking shared ZMK workspace directories"
