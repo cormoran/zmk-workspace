@@ -1,7 +1,6 @@
 # cormoran's west workspace for ZMK
 
-[![Build with zmk#main](https://github.com/cormoran/zmk-workspace/actions/workflows/zmk-config.yml/badge.svg)](https://github.com/cormoran/zmk-workspace/actions/workflows/zmk-config.yml)
-[![Build with zmk#v0.3](https://github.com/cormoran/zmk-workspace/actions/workflows/zmk-config-v0.3.yml/badge.svg)](https://github.com/cormoran/zmk-workspace/actions/workflows/zmk-config-v0.3.yml)
+[![Test ZMK templates](https://github.com/cormoran/zmk-workspace/actions/workflows/zmk-config.yml/badge.svg)](https://github.com/cormoran/zmk-workspace/actions/workflows/zmk-config.yml)
 
 - Minium zephyr SDK setup with [Nix](https://nixos.org/)
 - Making use of thin west sub-command [cormoran/zmk-west-commands](https://github.com/cormoran/zmk-west-commands) for building ZMK
@@ -14,6 +13,13 @@ shared West worktree rule. Repository skills in [`.agents/skills/`](.agents/skil
 are discovered automatically; the detailed dependency and worktree workflow is
 in [`shared-west-profiles`](.agents/skills/shared-west-profiles/SKILL.md).
 The remaining repository change and local output rules are in [AGENTS.md](AGENTS.md).
+
+CI tests both `main` and `v0.3-branch` for the config and module templates in
+one matrix. Each job clones the source into `projects/<repo>`, installs West
+dependencies in its own `ws/ci-<repo>-<branch>` workspace, then creates and
+builds or tests `ws/ci-<repo>-<branch>/wt-<repo>/<branch>`. The West cache stores
+only dependency checkouts inside that CI workspace, not source worktrees or
+the workspace configuration.
 
 When launching Codex from a separate Git repository under `projects/` or from
 one of its worktrees, launch from this root first if the shared workspace rule
