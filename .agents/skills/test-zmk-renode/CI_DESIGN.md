@@ -21,14 +21,17 @@ local/skill use, but is no longer invoked by the action).
 **zmk-workspace** (this repo) provides:
 
 - A root-level Zephyr module (`zephyr/module.yml`,
-  `name: zmk-workspace-renode-testing`) that any consumer picks up for free
-  by adding this repo as a (test-only) west dependency: it registers the
+  `name: zmk-workspace-renode-testing`) that a consumer can include as a
+  `ZMK_EXTRA_MODULES` entry: it registers the
   Renode-only Studio RPC UART transport
   (`.agents/skills/test-zmk-renode/renode-test-module/`, via `build.cmake`/
   `build.kconfig`) and a `snippet_root`
   (`.agents/skills/test-zmk-renode/snippets/`) so the module's own `west build`/
-  `build.yaml` can apply the `renode-studio-uart` snippet directly — no
-  `ZMK_EXTRA_MODULES` wiring or action-side build step needed. The
+  `build.yaml` can apply the `renode-studio-uart` snippet directly. A West
+  project is not automatically an extra ZMK module when using
+  `west zmk-build`, so the caller must pass its checkout explicitly (for
+  example `-m dependencies/zmk-workspace`); the action does not build and
+  cannot provide that wiring. The
   `renode-test-module/` directory also keeps its own nested
   `zephyr/module.yml` for the older standalone-`ZMK_EXTRA_MODULES` pattern
   (still used by `build_fw.py`'s local/skill-compat role builds); the two
@@ -81,7 +84,9 @@ given, with `ZMK_RENODE_ELF`, `RENODE`, and `PYTHONPATH` exported.
   `west zmk-build`) -- this IS "the build" the action used to do.
 - `zmk-workspace` added to its **test-only** west manifest
   (`west/west-dependency/west-test-dependency.yml`), pinned by commit SHA,
-  so the snippet + transport module above are available.
+  and explicitly supplied to its `west zmk-build` invocation with `-m
+  dependencies/zmk-workspace`, so the snippet + transport module above are
+  actually available to CMake.
 - One step (not a whole separate job) in `.github/workflows/zmk-module.yml`,
   after the build step, calling the action with `elf-path` pointing at the
   artifact's `zephyr/zmk.elf`.

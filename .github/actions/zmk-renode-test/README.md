@@ -31,12 +31,13 @@ nRF52840 USBD model is a non-functional register stub (see
   gate that Renode can never satisfy).
 
 Both are shipped as **this repo's own root-level Zephyr module**
-(`zephyr/module.yml`, `name: zmk-workspace-renode-testing`), so any
-consumer that has `zmk-workspace` as a west dependency gets the snippet and
-the transport module auto-discovered for free — no `ZMK_EXTRA_MODULES`
-wiring needed. Add it as a **test-only** west dependency (do not pull it
-into a module's real/published manifest), then build a normal artifact
-with the snippet applied, e.g. in `build.yaml`:
+(`zephyr/module.yml`, `name: zmk-workspace-renode-testing`). Add it as a
+**test-only** west dependency (do not pull it into a module's
+real/published manifest) and explicitly include its checkout in
+`ZMK_EXTRA_MODULES`: `west zmk-build` does not turn every West project into
+an extra module automatically. For an isolated module checkout, pass
+`-m dependencies/zmk-workspace` alongside its normal module/config paths,
+then build a normal artifact with the snippet applied, e.g. in `build.yaml`:
 
 ```yaml
 - artifact: renode_smoke_test
@@ -48,7 +49,8 @@ with the snippet applied, e.g. in `build.yaml`:
 ```
 
 or directly with `west build -S renode-studio-uart ...` /
-`west zmk-build <config> -S renode-studio-uart`. This produces a normal
+`west zmk-build <config> -m dependencies/zmk-workspace -S renode-studio-uart`.
+This produces a normal
 `zephyr/zmk.elf` under the build directory — pass that path as `elf-path`
 below.
 

@@ -115,10 +115,9 @@ normal `build.yaml` artifact) and passes the resulting path via `elf-path`;
 the action only installs Renode, boots that ELF, and runs the smoke +
 module tests. See that directory's README for the inputs/usage snippet.
 
-Building the ELF needs two things this skill provides, both wired together
-as a normal Zephyr module via this repo's root-level `zephyr/module.yml`
-(`name: zmk-workspace-renode-testing`) so any consumer that adds
-`zmk-workspace` as a (test-only) west dependency gets them for free:
+Building the ELF needs two things this skill provides, wired together as a
+Zephyr module via this repo's root-level `zephyr/module.yml`
+(`name: zmk-workspace-renode-testing`):
 
 - The `renode-studio-uart` Zephyr snippet
   (`.agents/skills/test-zmk-renode/snippets/renode-studio-uart/`), applied with
@@ -133,11 +132,35 @@ as a normal Zephyr module via this repo's root-level `zephyr/module.yml`
   `ZMK_EXTRA_MODULES` pattern `build_fw.py`'s local role-based builds use —
   the two don't conflict; see `CI_DESIGN.md`).
 
+### CI dependency-discovery check
+
+A project listed in a West manifest is **not automatically** an input to
+`west zmk-build`: the command constructs `ZMK_EXTRA_MODULES` from its `-m`
+arguments and its auto-discovery policy. Therefore, adding `zmk-workspace`
+as a test-only West dependency is necessary but not sufficient. Pass its
+checkout explicitly, for example `-m dependencies/zmk-workspace`, when the
+artifact needs this module's snippet or transport. Confirm CMake actually
+loads `zmk-workspace-renode-testing` in `zephyr_modules.txt`.
+
+Conversely, `zmk-west-commands` provides the `zmk-build`/Renode commands and
+actions; do not assume it provides the `renode-studio-uart` snippet or the
+Renode UART transport. Check the pinned revision's files before treating a
+West dependency as a source of Zephyr modules.
+
+Local workspace layouts can hide this error: `zmk-build`'s default `walk-up`
+auto-discovery may inject the enclosing `zmk-workspace` root even though CI
+will not. To reproduce CI deterministically, either pass every required
+module with `-m`, or use
+`--extra-module-auto-discovery zmk-config current` and verify the generated
+`ZMK_EXTRA_MODULES` command line. Never include both the workspace transport
+and a module-local copy of `renode_uart_transport.c`; they define the same
+transport and fail at link time.
+
 See `scripts/renode_harness.py` / `scripts/renode_smoke.py` for the
-importable/parameterized pieces the action wires together for the test
-side. `zmk-module-template-with-custom-studio-rpc`'s `tests/renode/` and
-`tests/zmk-config/build.yaml`'s `renode_smoke_test` artifact are the worked
-example of both halves (build + test).
+importable/parameterized pieces the action wires together for the test side.
+The `zmk-module-template-with-custom-studio-rpc` repository instead uses the
+`zmk-west-commands` wired-split Renode harness and the stock USB transport;
+it is not an example of this UART-transport build path.
 
 ### Known Renode limitation: larger custom-subsystem RPC responses stall
 
@@ -261,8 +284,9 @@ manifest, `name: zmk-workspace-renode-testing`) lives outside this skill
 directory, at the zmk-workspace repo root, since Zephyr module discovery
 requires `zephyr/module.yml` at a west project's root. It registers
 `renode-test-module/` (cmake+kconfig) and this skill's `snippets/` dir
-(`snippet_root`) so any repo with `zmk-workspace` as a west dependency
-picks up both automatically. See `CI_DESIGN.md` for the full story.
+(`snippet_root`). A consumer must also include that West checkout in
+`ZMK_EXTRA_MODULES` (normally with `west zmk-build -m`); see
+`CI_DESIGN.md` for the full story.
 
 ## Honesty Check
 
