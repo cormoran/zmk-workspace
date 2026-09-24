@@ -61,6 +61,9 @@ jobs:
         run: |
           west update --narrow
           west zephyr-export
+          # The West cache includes this tracked workspace file. Restore the
+          # checkout's version after extracting the cache and updating Zephyr.
+          git show HEAD:zephyr/module.yml > zephyr/module.yml
         shell: nix develop ./nix --command bash -e {0}
       - name: Build
         run: west zmk-build ./zmk-config-template -q
