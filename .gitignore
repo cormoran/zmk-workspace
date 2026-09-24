@@ -13,5 +13,12 @@
 !tools/**
 !docs/
 !docs/**
+/projects/
+!/ws/
+/ws/*
+!/ws/*/
+/ws/*/*
+!/ws/*/workspace-config/
+!/ws/*/workspace-config/**
 **/__pycache__/
 *.pyc

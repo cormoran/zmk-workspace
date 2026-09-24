@@ -21,10 +21,26 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parent.parent
+PROJECTS = ROOT / "projects"
+WORKSPACES = ROOT / "ws"
 
 
 class ProfileError(Exception):
     pass
+
+
+def repository_path(value: str) -> Path:
+    candidate = Path(value)
+    if len(candidate.parts) == 1 and (PROJECTS / candidate).is_dir():
+        return PROJECTS / candidate
+    return candidate.resolve()
+
+
+def workspace_path(value: str) -> Path:
+    candidate = Path(value)
+    if len(candidate.parts) == 1 and (WORKSPACES / candidate).is_dir():
+        return WORKSPACES / candidate
+    return candidate.resolve()
 
 
 def run(*args: str, cwd: Path, capture: bool = True) -> str:
@@ -102,7 +118,7 @@ def profile_data(profile: Path) -> dict:
 
 
 def create(args: argparse.Namespace) -> None:
-    repo = Path(args.repo).resolve()
+    repo = repository_path(args.repo)
     manifest = manifest_file(repo, args.manifest)
     deps = dependencies_at(repo)
     doc = resolved(repo, manifest, deps)
@@ -123,13 +139,13 @@ def create(args: argparse.Namespace) -> None:
         name: {"url": p["url"], "revision": p["revision"], "path": p["path"]}
         for name, p in by_name.items()
     }
-    profile = ROOT / name
+    profile = WORKSPACES / name
     if profile.exists():
         existing = profile_data(profile)["requirements"]
         if all(existing.get(project) == requirement for project, requirement in requirements.items()):
             raise ProfileError(f"compatible profile already exists: {profile}")
         digest = hashlib.sha256(json.dumps(requirements, sort_keys=True).encode()).hexdigest()[:8]
-        profile = ROOT / f"{name}_deps-{digest}"
+        profile = WORKSPACES / f"{name}_deps-{digest}"
         if profile.exists():
             raise ProfileError(f"profile already exists: {profile}")
 
@@ -154,7 +170,6 @@ def create(args: argparse.Namespace) -> None:
     }
     config = profile / "workspace-config"
     config.mkdir(parents=True)
-    run("git", "init", "-q", cwd=config)
     (config / "west.yml").write_text(yaml.safe_dump(output, sort_keys=False), encoding="utf-8")
     (config / "profile.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
     # west init refuses a nested topdir if an unrelated ancestor has .west.
@@ -178,11 +193,6 @@ def create(args: argparse.Namespace) -> None:
     (config / "west.yml").write_text(yaml.safe_dump(output, sort_keys=False), encoding="utf-8")
     run("west", "manifest", "--validate", cwd=profile)
     check(profile, repo, manifest)
-    git(config, "add", "west.yml", "profile.json")
-    run(
-        "git", "-c", "user.name=Shared West", "-c", "user.email=shared-west@localhost",
-        "commit", "-q", "-m", "Initialize shared West profile", cwd=config,
-    )
     print("Dependencies updated and non-ZMK revisions pinned")
 
 
@@ -220,14 +230,14 @@ def check(profile: Path, repo: Path, manifest: str) -> None:
 
 
 def verify(args: argparse.Namespace) -> None:
-    profile = Path(args.profile).resolve()
-    repo = Path(args.repo).resolve()
+    profile = workspace_path(args.profile)
+    repo = repository_path(args.repo)
     check(profile, repo, manifest_file(repo, args.manifest))
     print(f"Compatible: {repo} -> {profile}")
 
 
 def add_worktree(args: argparse.Namespace) -> None:
-    repo = Path(args.repo).resolve()
+    repo = repository_path(args.repo)
     branch = args.branch
     if not branch or Path(branch).is_absolute() or ".." in Path(branch).parts:
         raise ProfileError("branch must be a safe relative path")
@@ -245,7 +255,8 @@ def add_worktree(args: argparse.Namespace) -> None:
         if f"branch refs/heads/{branch}" in worktrees.splitlines():
             raise ProfileError(f"branch is already checked out in another worktree: {branch}")
     start = branch if branch_exists else (args.start or "HEAD")
-    with tempfile.TemporaryDirectory(prefix="shared-west-worktree-", dir=ROOT) as staging:
+    WORKSPACES.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="shared-west-worktree-", dir=WORKSPACES) as staging:
         stage = Path(staging) / "checkout"
         run("git", "worktree", "add", "--detach", str(stage), start, cwd=repo, capture=False)
         try:
@@ -253,7 +264,7 @@ def add_worktree(args: argparse.Namespace) -> None:
                 raise ProfileError(f"manifest not found at start revision: {manifest}")
             matches = []
             failures = []
-            for profile in sorted(ROOT.glob("zephyr-*_zmk-*")):
+            for profile in sorted(WORKSPACES.glob("zephyr-*_zmk-*")):
                 if not (profile / "workspace-config/profile.json").is_file():
                     continue
                 try:
@@ -265,7 +276,7 @@ def add_worktree(args: argparse.Namespace) -> None:
                 detail = "\n".join(failures)
                 raise ProfileError(f"expected one compatible profile, found {len(matches)}\n{detail}")
             profile = matches[0]
-            target = profile / repo.name / branch
+            target = profile / f"wt-{repo.name}" / branch
             if target.exists():
                 raise ProfileError(f"worktree path already exists: {target}")
             target.parent.mkdir(parents=True, exist_ok=True)

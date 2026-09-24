@@ -53,12 +53,16 @@ is explicitly updated; the other dependencies are pinned to the commits
 installed when the profile is created.
 
 ```bash
-python3 tools/shared_west.py init zmk-behavior-runtime-sensor-rotate
+python3 tools/shared_west.py init projects/zmk-behavior-runtime-sensor-rotate
 python3 tools/shared_west.py worktree zmk-behavior-runtime-sensor-rotate my-feature
 ```
 
 The second command places a new or existing `my-feature` branch under
-`<profile>/zmk-behavior-runtime-sensor-rotate/my-feature`. An existing branch
+`ws/<profile>/wt-zmk-behavior-runtime-sensor-rotate/my-feature`. Source Git
+checkouts live in `projects/<repo>`, and shared West workspaces live in
+`ws/<profile>`. The profile's `workspace-config/west.yml` and `profile.json`
+are tracked by this repository; dependencies and worktrees are ignored.
+An existing branch
 must not already be checked out elsewhere. The command checks all active
 dependency declarations before placing the worktree. If no compatible profile
 exists, it stops without changing shared dependencies. To provision another

@@ -17,6 +17,11 @@ verified pilot and the known limits.
   commit and ZMK branch, with a dependency suffix when the same pair needs a
   different dependency set. The directory name alone does not establish
   compatibility; check all active projects before placing a worktree.
+- Source Git checkouts live in `projects/<repo>`; shared profiles live in
+  `ws/<profile>`. This repository tracks each profile's
+  `workspace-config/west.yml` and `profile.json`. Its `.west`, dependencies,
+  and `wt-<repo>` worktrees are ignored. Commit and push profile configuration
+  changes in this repository after validation, following `AGENTS.md`.
 - ZMK follows the named branch; other projects are pinned to commits after
   profile creation. Run updates from the profile, then recheck and build the
   worktrees using it. Do not run `west init` or `west update` inside a shared
@@ -31,14 +36,15 @@ verified pilot and the known limits.
 
 ## Workflow
 
-1. To seed a profile, use a module checkout with its standalone dependencies
-   already installed: `python3 tools/shared_west.py init <module-repo>`.
-   This creates one dependency set and commits its local manifest. It does not
-   remove or change the source checkout.
+1. To seed a profile, use a module checkout in `projects/<repo>` with its
+   standalone dependencies already installed:
+   `python3 tools/shared_west.py init <module-repo>`.
+   This creates one dependency set and root-tracked profile configuration. It
+   does not remove or change the source checkout.
 2. Place a new or existing feature branch in a compatible profile with
    `python3 tools/shared_west.py worktree <module-repo> <feature> [--start REF]`.
    The script stages the checkout, resolves its manifest, checks every active
-   dependency declaration, then moves it to `<profile>/<repo>/<feature>`.
+   dependency declaration, then moves it to `ws/<profile>/wt-<repo>/<feature>`.
    `--start` applies when creating a branch; an existing branch must be free
    in Git's worktree list.
    If no profile matches, report the differing project names and revisions.

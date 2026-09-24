@@ -114,3 +114,27 @@ The first trial was explicitly limited to existing profiles. After observing
 it, the skill now states the same boundary clearly: a dependency mismatch
 must not trigger changes to an existing shared checkout; a new profile is a
 separate provisioning task.
+
+## Layout migration
+
+The source Git checkouts moved to `projects/<repo>`. Shared dependencies moved
+to `ws/<profile>`, with feature worktrees under `wt-<repo>/<branch>`. The pilot
+worktree is now at
+`ws/zephyr-9df4b12b5af3_zmk-main+custom-studio-protocol/wt-zmk-behavior-runtime-sensor-rotate/shared-west-pilot`.
+Git worktree references were repaired after the moves. Existing unrelated
+worktrees in `.work/` and `/home/ubuntu/perf-benchmark` were preserved.
+
+The profile's `workspace-config` is now tracked by the `zmk-workspace` root
+repository. Its former nested `.git` directory was moved to the ignored
+`.work/shared-west-layout-backup/` to preserve the earlier experiment history.
+West accepts the root-tracked directory as a manifest repository; it does not
+require a nested Git repository there. The profile's `.west` and dependency
+checkouts remain ignored, while `west.yml` and `profile.json` are committed
+with the workspace tooling.
+
+After migration, all 25 source repositories' Git worktrees were reachable and
+all 20 standalone West configurations still selected their own topdirs. A new
+temporary branch worktree selected the shared profile, while the incompatible
+fast-keymap manifest was still rejected. Both pilot build targets succeeded
+after clearing the old build directory, whose CMake cache held absolute paths
+from before the move.
