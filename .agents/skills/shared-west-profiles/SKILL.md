@@ -21,10 +21,9 @@ verified pilot and the known limits.
   import, when checking a module. `west-dependency.yml` alone can omit ZMK and
   Zephyr revisions and must not be used to establish profile compatibility.
 - Source Git checkouts live in `projects/<repo>`; shared profiles live in
-  `ws/<profile>`. This repository tracks each profile's
-  `workspace-config/west.yml` and `profile.json`. Its `.west`, dependencies,
-  and `wt-<repo>` worktrees are ignored. Commit and push profile configuration
-  changes in this repository after validation, following `AGENTS.md`.
+  `ws/<profile>`. All profile files, including `workspace-config/west.yml`,
+  `profile.json`, `.west`, dependencies, and `wt-<repo>` worktrees, are local
+  and ignored by this repository. Do not add profile files to Git.
 - ZMK follows the named branch; other projects are pinned to commits after
   profile creation. Run updates from the profile, then recheck and build the
   worktrees using it. Do not run `west init` or `west update` inside a shared
@@ -56,8 +55,8 @@ shared worktree to force the new declaration.
    when it is not the tool's default:
    `python3 tools/shared_west.py init <seed-checkout> --manifest <complete-test-manifest>`.
    The tool generates a dependency suffix when the Zephyr and ZMK pair already
-   has a profile with different requirements. Validate and commit the new
-   root-tracked profile configuration, then push it as required by `AGENTS.md`.
+   has a profile with different requirements. Validate the new profile before
+   using it.
 4. Prefer a successor branch in the new profile, starting at the manifest
    change commit:
    `python3 tools/shared_west.py worktree <repo> <successor-branch> --start <commit> --profile <new-profile>`.
@@ -72,8 +71,8 @@ shared worktree to force the new declaration.
 1. To seed a profile, use a module checkout in `projects/<repo>` with its
    standalone dependencies already installed:
    `python3 tools/shared_west.py init <module-repo>`.
-   This creates one dependency set and root-tracked profile configuration. It
-   does not remove or change the source checkout.
+   This creates one local dependency set and profile configuration. It does
+   not remove or change the source checkout.
    When the requested branch differs from the checkout, make a temporary
    detached worktree at that branch, link its `dependencies` to an existing
    standalone dependency tree with the same Zephyr revision, and pass its

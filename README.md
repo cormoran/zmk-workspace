@@ -19,7 +19,7 @@ projects/                         Source checkouts used to initialize profiles
 
 ws/                               Shared West profiles
 └── <profile>/
-    ├── workspace-config/              Tracked profile manifest and metadata
+    ├── workspace-config/              Local profile manifest and metadata
     ├── zephyr/, zmk/, …                Shared West dependency checkouts
     └── wt-<repo>/<branch>/             Feature-branch Git worktrees
 ```
@@ -31,8 +31,7 @@ repository.
 Use `ws/<profile>` for shared-profile development. A profile owns one set of
 West dependency checkouts. Create each feature branch in
 `wt-<repo>/<branch>`; compatible branches then build against the same
-dependencies. Only `workspace-config/` is tracked by this repository. The
-dependencies and worktrees are local files.
+dependencies. All profile files are local and ignored by this repository.
 
 ## Usage
 

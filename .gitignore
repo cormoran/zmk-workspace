@@ -18,11 +18,6 @@
 !docs/**
 /docs/local/
 /projects/
-!/ws/
-/ws/*
-!/ws/*/
-/ws/*/*
-!/ws/*/workspace-config/
-!/ws/*/workspace-config/**
+/ws/
 **/__pycache__/
 *.pyc

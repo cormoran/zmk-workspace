@@ -125,13 +125,13 @@ worktree is now at
 Git worktree references were repaired after the moves. Existing unrelated
 worktrees in `.work/` and `/home/ubuntu/perf-benchmark` were preserved.
 
-The profile's `workspace-config` is now tracked by the `zmk-workspace` root
-repository. Its former nested `.git` directory was moved to the ignored
+The profile's `workspace-config` was initially tracked by the `zmk-workspace`
+root repository. Profiles are now entirely local: `ws/`, including its
+manifest, metadata, `.west`, dependencies, and worktrees, is ignored. Its
+former nested `.git` directory was moved to the ignored
 `.work/shared-west-layout-backup/` to preserve the earlier experiment history.
-West accepts the root-tracked directory as a manifest repository; it does not
-require a nested Git repository there. The profile's `.west` and dependency
-checkouts remain ignored, while `west.yml` and `profile.json` are committed
-with the workspace tooling.
+West accepts the local directory as a manifest repository; it does not require
+a nested Git repository there.
 
 After migration, all 25 source repositories' Git worktrees were reachable and
 all 20 standalone West configurations still selected their own topdirs. A new
