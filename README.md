@@ -51,16 +51,31 @@ from that shell.
 ### Start a module
 
 Clone the module under `projects/`, then use `find` to list compatible shared
-profiles. Select one of the printed profile names.
+profiles. Select one of the printed profile names. If `find` reports that no
+profile is compatible, create one before continuing.
 
 ```bash
 git clone <module-url> projects/<repo>
 python3 tools/shared_west.py find <repo>
 ```
 
-Create the branch worktree in that profile, and build from the resulting path.
-`worktree` checks the selected profile again. All development builds belong in
-`ws/<profile>/wt-<repo>/<branch>`.
+#### When no profile is compatible
+
+Initialize the source repository's standalone dependencies according to that
+module's README. Then create a profile from `projects/<repo>`:
+
+```bash
+python3 tools/shared_west.py init <repo>
+```
+
+This only creates shared dependencies under `ws/<profile>`; do not build in
+the source checkout. Use the printed profile path in the next step.
+
+#### Create and build the worktree
+
+Create the branch worktree in the selected or newly created profile, and build
+from the resulting path. `worktree` checks the selected profile again. All
+development builds belong in `ws/<profile>/wt-<repo>/<branch>`.
 
 ```bash
 python3 tools/shared_west.py worktree <repo> <branch> --profile <profile>
@@ -69,22 +84,9 @@ west zmk-build tests/zmk-config -m . -d ./build -q
 ```
 
 Use a separate `build/` directory in every worktree. The module's README
-defines its own build target when it differs from `tests/zmk-config`.
-
-### Create a shared profile
-
-If no existing profile is compatible, initialize the source repository's
-standalone dependencies according to that module's README. Then create a
-profile from `projects/<repo>`:
-
-```bash
-python3 tools/shared_west.py init <repo>
-```
-
-This creates the shared dependencies under `ws/<profile>`; create a worktree
-with the preceding commands before building. Only run dependency updates from
-the profile directory. After updating, check the affected modules and rebuild
-their worktrees.
+defines its own build target when it differs from `tests/zmk-config`. Only run
+West dependency updates from the profile directory, then recheck and rebuild
+the affected worktrees.
 
 ### Change dependency versions
 
