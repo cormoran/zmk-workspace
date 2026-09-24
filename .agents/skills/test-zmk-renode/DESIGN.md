@@ -56,7 +56,7 @@ EXPERIMENT_LOG.md     # running log of what worked / failed during bring-up
 ## Firmware build
 
 Build against the already-set-up west workspace in
-`../../zmk-feature-studio-rpc-perf` (it has `zmk` + `zephyr` + deps under
+`../../../zmk-feature-studio-rpc-perf` (it has `zmk` + `zephyr` + deps under
 `dependencies/`). Board is ZMK `xiao_ble`. The studio-rpc-perf shield
 `my_awesome_keyboard` (and its split central/peripheral variants) is a ready
 Studio-RPC-enabled target. Produce `.elf` (Renode loads ELF, not uf2).

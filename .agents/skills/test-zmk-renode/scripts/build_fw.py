@@ -59,7 +59,7 @@ from pathlib import Path
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPTS_DIR.parent
-ZMK_WORKSPACE = SKILL_DIR.parents[1]
+ZMK_WORKSPACE = SKILL_DIR.parents[2]
 
 OVERLAYS = SKILL_DIR / "overlays"
 RENODE_TEST_MODULE = SKILL_DIR / "renode-test-module"

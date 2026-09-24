@@ -13,7 +13,7 @@ Framing (same as hardware, see zmk studio transport):
 Payload is a length-delimited... no: ZMK studio frames carry a single protobuf
 ``Request``/``Response`` message body directly (no length prefix); the frame
 delimiters mark the boundaries. This mirrors
-skills/debug-zmk-jlink/scripts/zmk_studio_rpc_probe.py, which speaks the same
+.agents/skills/debug-zmk-jlink/scripts/zmk_studio_rpc_probe.py, which speaks the same
 framing over pyserial.
 """
 

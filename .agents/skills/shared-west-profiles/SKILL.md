@@ -6,7 +6,7 @@ description: Manage this ZMK workspace's shared West dependency profiles and pla
 # Shared West profiles
 
 Use `tools/shared_west.py` from the `zmk-workspace` repository root. Read
-[`docs/shared-west-experiment.md`](../../docs/shared-west-experiment.md) when
+[`docs/shared-west-experiment.md`](../../../docs/shared-west-experiment.md) when
 changing the profile workflow or diagnosing a failed setup; it records the
 verified pilot and the known limits.
 

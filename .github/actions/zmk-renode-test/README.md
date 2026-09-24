@@ -3,7 +3,7 @@
 Reusable composite GitHub Action: boots an **already-built** ZMK module
 firmware ELF in the [Renode](https://renode.io/) emulator, runs a generic
 boot + core Studio RPC smoke test, and (optionally) the consuming module's
-own Renode test suite. Backed by `skills/test-zmk-renode/` in this same
+own Renode test suite. Backed by `.agents/skills/test-zmk-renode/` in this same
 repo — read that skill's `SKILL.md` and `references/renode-notes.md` for the
 gotchas this action's steps exist to work around (silent boot hangs,
 one-client UART sockets, the USB-gated transport, etc.).
@@ -19,7 +19,7 @@ below.
 
 Real hardware normally carries ZMK Studio RPC over USB-CDC-ACM. Renode's
 nRF52840 USBD model is a non-functional register stub (see
-`skills/test-zmk-renode/SKILL.md`), so a Renode-testable build needs:
+`.agents/skills/test-zmk-renode/SKILL.md`), so a Renode-testable build needs:
 
 - The `renode-studio-uart` snippet (nRF52840/XIAO-specific — binds console
   + Studio RPC to real UART peripherals instead of USB, and disables the

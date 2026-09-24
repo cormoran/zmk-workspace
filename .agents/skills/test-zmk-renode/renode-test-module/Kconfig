@@ -44,5 +44,5 @@ config ZMK_RENODE_STUDIO_UART_TRANSPORT
 
       Do not enable this for a real hardware build — it exists purely so
       the Renode T1 test (Studio RPC over UART, see
-      skills/test-zmk-renode/) has a way to reach the Studio RPC subsystem
+      .agents/skills/test-zmk-renode/) has a way to reach the Studio RPC subsystem
       without a working USB or BLE stack.

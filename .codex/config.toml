@@ -1,0 +1,9 @@
+# Project workflow instructions are loaded for trusted checkouts.
+developer_instructions = """
+Before working on a ZMK project under this workspace, read
+.agents/skills/shared-west-profiles/SKILL.md from the zmk-workspace root.
+Use a worktree in a compatible shared West profile, and follow that skill's
+rules for dependency checks, placement, updates, and builds. For this
+zmk-workspace repository itself, edit the current checkout directly as
+specified in AGENTS.md.
+"""

@@ -21,7 +21,7 @@ non-obvious behavior here cost real debugging time to pin down.
 - `@relative/paths` inside `-e` strings and inside `.resc` files resolve
   against Renode's **current working directory**, not the script's own
   directory. `i @single.resc` when the process's cwd is
-  `skills/test-zmk-renode/` and the file is actually at
+  `.agents/skills/test-zmk-renode/` and the file is actually at
   `platforms/single.resc` fails to find the file — same silent-failure mode
   as the description bug above (monitor comes up fine, but none of the
   script's `mach create`/`connector Connect`/`LoadELF` commands ever ran, so

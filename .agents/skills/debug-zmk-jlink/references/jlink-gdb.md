@@ -168,7 +168,7 @@ plain `h` in a JLinkExe script) even briefly can trip
 `LL_ASSERT_OVERHEAD`-class assertions and reset/crash the target. A
 sustained GDB `continue` session attached to such a target measurably
 increased crash rates in one investigation (60-100% vs. 0% hands-off across
-40+ trials) — see `skills/debug-zmk-split/SKILL.md`'s "GDB Attach Itself Can
+40+ trials) — see `.agents/skills/debug-zmk-split/SKILL.md`'s "GDB Attach Itself Can
 Destabilize BLE Radio Timing" section for the full writeup. Prefer
 `connect`+`mem`/`savebin` (no halt at all) or, if a halt is unavoidable, the
 shortest possible `h` → `mem`/`savebin`/`regs` → `g` round-trip over a held

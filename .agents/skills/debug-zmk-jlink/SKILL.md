@@ -214,7 +214,7 @@ use this to poll RTT logs or core-status registers (`DHCSR`) non-invasively
 instead of a live GDB session whenever the target's own radio/BLE timing
 is a live concern. See references/jlink-gdb.md's "Non-halting memory
 reads" section for the exact recipe, and
-`skills/debug-zmk-split/SKILL.md`'s "GDB Attach Itself Can Destabilize BLE
+`.agents/skills/debug-zmk-split/SKILL.md`'s "GDB Attach Itself Can Destabilize BLE
 Radio Timing" section for the hardware evidence behind this guidance.
 
 **Before attributing a "response/output never arrives" symptom to

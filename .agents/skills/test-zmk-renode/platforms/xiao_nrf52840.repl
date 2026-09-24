@@ -14,7 +14,7 @@
 //
 // UART note: uart0 (0x40002000) and uart1 (0x40028000) below map 1:1 to
 // Zephyr's `uart0`/`uart1` devicetree nodes for this SoC — no relabeling
-// needed between the ZMK overlays (skills/test-zmk-renode/overlays/*) and
+// needed between the ZMK overlays (.agents/skills/test-zmk-renode/overlays/*) and
 // this platform file.
 
 nvic: IRQControllers.NVIC @ sysbus 0xE000E000

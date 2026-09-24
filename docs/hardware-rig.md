@@ -18,7 +18,7 @@ privately alongside the actual host, not here.
   probes is what makes it possible to flash and observe two boards at once
   (e.g. to validate a ZMK split keyboard's central + peripheral roles
   pairing with each other — see
-  [`skills/debug-zmk-split`](../skills/debug-zmk-split/SKILL.md)).
+  [`.agents/skills/debug-zmk-split`](../.agents/skills/debug-zmk-split/SKILL.md)).
 - Both XIAOs are also connected over USB-C, which carries CDC ACM (ZMK
   Studio RPC / console, when the firmware enables it) independently of the
   SWD connection.
@@ -98,7 +98,7 @@ than re-debugging from scratch:
   boots (deterministic HardFault at reset). Debug builds for that unit need
   a devicetree overlay overriding the code partition to start at `0x0`
   instead. See
-  [`skills/develop-zmk-module/references/hardware-rig.md`](../skills/develop-zmk-module/references/hardware-rig.md)
+  [`.agents/skills/develop-zmk-module/references/hardware-rig.md`](../.agents/skills/develop-zmk-module/references/hardware-rig.md)
   for the exact overlay.
 - A J-Link probe that has never been connected to from this host's SEGGER
   tools before may perform a one-time firmware update on first connect,
@@ -114,5 +114,5 @@ than re-debugging from scratch:
 
 For the full agent-oriented workflows (build, flash, Studio RPC, GDB/RTT,
 two-board split debugging), see the
-[`skills/`](../skills) directory, in particular `build-zmk-config`,
+[`.agents/skills/`](../.agents/skills) directory, in particular `build-zmk-config`,
 `debug-zmk-jlink`, `develop-zmk-module`, and `debug-zmk-split`.

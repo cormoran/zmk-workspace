@@ -24,9 +24,9 @@ local/skill use, but is no longer invoked by the action).
   `name: zmk-workspace-renode-testing`) that any consumer picks up for free
   by adding this repo as a (test-only) west dependency: it registers the
   Renode-only Studio RPC UART transport
-  (`skills/test-zmk-renode/renode-test-module/`, via `build.cmake`/
+  (`.agents/skills/test-zmk-renode/renode-test-module/`, via `build.cmake`/
   `build.kconfig`) and a `snippet_root`
-  (`skills/test-zmk-renode/snippets/`) so the module's own `west build`/
+  (`.agents/skills/test-zmk-renode/snippets/`) so the module's own `west build`/
   `build.yaml` can apply the `renode-studio-uart` snippet directly — no
   `ZMK_EXTRA_MODULES` wiring or action-side build step needed. The
   `renode-test-module/` directory also keeps its own nested
@@ -35,7 +35,7 @@ local/skill use, but is no longer invoked by the action).
   don't conflict since west's module auto-discovery only looks at a west
   *project's* root, never recurses into subdirectories for more
   `module.yml` files.
-- `skills/test-zmk-renode/snippets/renode-studio-uart/` — a Zephyr snippet
+- `.agents/skills/test-zmk-renode/snippets/renode-studio-uart/` — a Zephyr snippet
   (`snippet.yml` + `.conf` + `.overlay`, modeled on ZMK's own
   `studio-rpc-usb-uart` snippet) carrying exactly what `build_fw.py`'s
   `COMMON_ARGS`/`STUDIO_TRANSPORT_ARGS` used to set via raw cmake args:
@@ -46,7 +46,7 @@ local/skill use, but is no longer invoked by the action).
   `uses: cormoran/zmk-workspace/.github/actions/zmk-renode-test@<ref>`,
   GitHub downloads this whole repo at `<ref>` and `${{ github.action_path }}`
   points at the action dir — so the action can reference the skill's assets
-  (`skills/test-zmk-renode/{platforms,scripts}`) by relative path. Single
+  (`.agents/skills/test-zmk-renode/{platforms,scripts}`) by relative path. Single
   source of truth, no copying.
 - Generalized scripts (refactored from the skill, which keeps working):
   - `scripts/renode_harness.py` — importable library: RenodeSession /
@@ -162,7 +162,7 @@ already-built ELF under Renode. Changed:
 ## Constraints / knowns
 
 - The skill's own `renode_test.py` must stay green after any refactor here
-  (regression gate: `python skills/test-zmk-renode/scripts/renode_test.py -v`).
+  (regression gate: `python .agents/skills/test-zmk-renode/scripts/renode_test.py -v`).
 - The template uses the patched ZMK (`main+custom-studio-protocol`); the
   transport clone in `renode-test-module/` must compile against it too.
 - CI runner: prefer a single job inside `zmkfirmware/zmk-build-arm:stable`

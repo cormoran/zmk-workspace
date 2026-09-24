@@ -6,7 +6,7 @@ on:
       - main
     paths-ignore:
       - "docs/**"
-      - "skills/**"
+      - ".agents/skills/**"
       - "tools/**"
       - ".devcontainer/**"
       - ".claude/**"
@@ -14,7 +14,7 @@ on:
   pull_request:
     paths-ignore:
       - "docs/**"
-      - "skills/**"
+      - ".agents/skills/**"
       - "tools/**"
       - ".devcontainer/**"
       - ".claude/**"

@@ -35,7 +35,7 @@ Use this before a J-Link flash or a conclusion that the ZMK application is broke
 | SWD access is protected (`APPROTECT`) | A Nordic CTRL-AP recover/full erase may be necessary; it destroys flash and UICR. Confirm the chip and exact combined recovery image are available before doing it. Reconnect and program the factory-style image in the same session. |
 | `Cannot connect to the probe/programmer`, missing usbfs node, `VTref=0`, DAP power-up failure, or Cortex-M33 identified | Repair probe pass-through, power order, target power, or SWD routing first. Flash changes cannot fix these conditions. See `jlink-gdb.md` and the setup section of `SKILL.md`. |
 
-The isolated `code_partition`-at-`0x0` overlay in `skills/develop-zmk-module/references/hardware-rig.md` remains a diagnostic workaround for a particular unit. It bypasses an unusable boot chain and is not the starting state for a normal XIAO build. If a factory-style repair has been verified and that specific unit still cannot boot a `0x27000` image, document the evidence before using the overlay.
+The isolated `code_partition`-at-`0x0` overlay in `.agents/skills/develop-zmk-module/references/hardware-rig.md` remains a diagnostic workaround for a particular unit. It bypasses an unusable boot chain and is not the starting state for a normal XIAO build. If a factory-style repair has been verified and that specific unit still cannot boot a `0x27000` image, document the evidence before using the overlay.
 
 ## Select and check the recovery image
 

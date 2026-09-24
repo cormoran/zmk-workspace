@@ -57,8 +57,9 @@ Date: 2026-09-24. Pilot module: `zmk-behavior-runtime-sensor-rotate`.
 - [x] Pinned all 57 non-ZMK projects to their installed commits in the
   profile's `workspace-config/west.yml` and committed that local manifest.
 - [x] `skill-creator`'s `quick_validate.py` accepted
-  `skills/shared-west-profiles/SKILL.md`.
-- [x] Linked the repository skill into `~/.codex/skills/` for local discovery.
+  `.agents/skills/shared-west-profiles/SKILL.md`.
+- [x] Linked the repository skill into `~/.codex/skills/` for local discovery
+  before moving repository skills to `.agents/skills/`.
 - [x] Created an additional worktree from an existing branch and verified the
   same profile selection; removed that temporary test worktree and branch.
 
@@ -95,7 +96,7 @@ and review auto-discovered module paths when a build behaves unexpectedly.
 
 ## Luna agent forward test
 
-Two independent Luna trials loaded `skills/shared-west-profiles/SKILL.md` and
+Two independent Luna trials loaded `.agents/skills/shared-west-profiles/SKILL.md` and
 used the tool rather than changing West settings by hand.
 
 - Incompatible trial: `zmk-feature-fast-keymap` requested a new worktree in an

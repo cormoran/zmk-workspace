@@ -6,7 +6,7 @@
  * uart1 at pins (P0.02/P0.03) that are specific to the XIAO nRF52840
  * board file. A board/SoC outside that family needs its own overlay (see
  * `overlays/split-wired-uart.overlay` for the split-role sibling, and
- * skills/test-zmk-renode/SKILL.md for the general pattern) -- this snippet
+ * .agents/skills/test-zmk-renode/SKILL.md for the general pattern) -- this snippet
  * is deliberately named `renode-studio-uart`, not something board-generic.
  *
  * Real hardware normally carries ZMK Studio RPC over USB-CDC-ACM (the

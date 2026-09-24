@@ -6,6 +6,20 @@
 - Minium zephyr SDK setup with [Nix](https://nixos.org/)
 - Making use of thin west sub-command [cormoran/zmk-west-commands](https://github.com/cormoran/zmk-west-commands) for building ZMK
 
+## Codex setup
+
+Launch Codex from this repository root and trust the project so it loads
+[`.codex/config.toml`](.codex/config.toml). The project config gives Codex the
+shared West worktree rule. Repository skills in [`.agents/skills/`](.agents/skills/)
+are discovered automatically; the detailed dependency and worktree workflow is
+in [`shared-west-profiles`](.agents/skills/shared-west-profiles/SKILL.md).
+The remaining repository change and local output rules are in [AGENTS.md](AGENTS.md).
+
+When launching Codex from a separate Git repository under `projects/` or from
+one of its worktrees, launch from this root first if the shared workspace rule
+is needed. Those nested repositories have their own Git root and do not inherit
+this repository's project configuration.
+
 ## Usage
 
 1. Install [nix](https://nixos.org/download/)

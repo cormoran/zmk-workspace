@@ -7,7 +7,7 @@ description: >-
   `build.yaml` artifact, using the `renode-studio-uart` snippet this repo
   provides as a Zephyr module -- see README.md) and passes the resulting
   path via `elf-path`. See README.md in this directory for the full
-  contract and a usage example. Backed by skills/test-zmk-renode/ in this
+  contract and a usage example. Backed by .agents/skills/test-zmk-renode/ in this
   same repo -- read that skill's SKILL.md / references/renode-notes.md for
   the underlying gotchas.
 
@@ -69,7 +69,7 @@ runs:
       # the env var is path-translated by the runner, the expression is not
       # (actions/runner#716). This bit us on the first CI run.
       run: |
-        scripts_dir="$(cd "$GITHUB_ACTION_PATH/../../../skills/test-zmk-renode/scripts" && pwd)"
+        scripts_dir="$(cd "$GITHUB_ACTION_PATH/../../../.agents/skills/test-zmk-renode/scripts" && pwd)"
         echo "scripts-dir=$scripts_dir" >> "$GITHUB_OUTPUT"
 
     - name: Cache Renode install

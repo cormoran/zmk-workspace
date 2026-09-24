@@ -40,7 +40,7 @@ for the two tiers that are green. What's substituted:
 | T2 | Wired split: central receives + applies a peripheral-originated key event over the split-wired UART link | GREEN |
 | T3 | BLE (Studio-over-BLE and/or split-over-BLE) | Experimental, gated off by default — see below |
 
-Run everything: `python skills/test-zmk-renode/scripts/renode_test.py -v`
+Run everything: `python .agents/skills/test-zmk-renode/scripts/renode_test.py -v`
 (~100s). All green plus one documented skip is the expected/normal result.
 
 ## Setup
@@ -48,7 +48,7 @@ Run everything: `python skills/test-zmk-renode/scripts/renode_test.py -v`
 Install Renode (portable tarball, no system mono/dotnet needed):
 
 ```bash
-bash skills/test-zmk-renode/scripts/install_renode.sh
+bash .agents/skills/test-zmk-renode/scripts/install_renode.sh
 ```
 
 `scripts/renode_test.py` also auto-installs Renode on first run if it's
@@ -57,7 +57,7 @@ missing, so this step is optional in practice.
 ## Running The Tests
 
 ```bash
-cd skills/test-zmk-renode/scripts
+cd .agents/skills/test-zmk-renode/scripts
 python renode_test.py -v                        # everything
 python renode_test.py -v RenodeZmkTests.test_t1_studio_rpc_uart
 python -m unittest renode_test -v                # equivalent, module form
@@ -74,9 +74,9 @@ To build a single artifact by hand (e.g. to boot it interactively and poke
 around):
 
 ```bash
-python skills/test-zmk-renode/scripts/build_fw.py --role single
-python skills/test-zmk-renode/scripts/build_fw.py --role central
-python skills/test-zmk-renode/scripts/build_fw.py --role peripheral
+python .agents/skills/test-zmk-renode/scripts/build_fw.py --role single
+python .agents/skills/test-zmk-renode/scripts/build_fw.py --role central
+python .agents/skills/test-zmk-renode/scripts/build_fw.py --role peripheral
 ```
 
 ## T3 (BLE) — What We Know, Deliberately Not Pursued Further
@@ -113,13 +113,13 @@ as a normal Zephyr module via this repo's root-level `zephyr/module.yml`
 `zmk-workspace` as a (test-only) west dependency gets them for free:
 
 - The `renode-studio-uart` Zephyr snippet
-  (`skills/test-zmk-renode/snippets/renode-studio-uart/`), applied with
+  (`.agents/skills/test-zmk-renode/snippets/renode-studio-uart/`), applied with
   `-S renode-studio-uart` / a `snippets:` entry in `build.yaml` — carries
   the same DT overlay + Kconfig this skill's own `build_fw.py` sets via raw
   cmake args (see that script's `COMMON_ARGS`/`STUDIO_TRANSPORT_ARGS` for
   the authoritative, commented list; keep the two in sync).
 - The Renode-only Studio RPC UART transport
-  (`skills/test-zmk-renode/renode-test-module/`), registered via that same
+  (`.agents/skills/test-zmk-renode/renode-test-module/`), registered via that same
   root module.yml's `build.cmake`/`build.kconfig` (its own nested
   `zephyr/module.yml` still exists too, for the older standalone
   `ZMK_EXTRA_MODULES` pattern `build_fw.py`'s local role-based builds use —
@@ -239,7 +239,7 @@ platforms/
 renode-test-module/        - small additive Zephyr module: the ZMK_TRANSPORT_NONE
                               Studio RPC UART transport that makes T1 possible
                               without real USB (see gotcha #2 above); also registered via
-                              ../../zephyr/module.yml (this repo's root) for CI consumers
+                              ../../../zephyr/module.yml (this repo's root) for CI consumers
 scripts/
   install_renode.sh         - fetch Renode portable
   build_fw.py                - wraps `west build` with all the flags this doc explains
@@ -248,7 +248,7 @@ scripts/
   rpc_client.py               - Studio RPC framing over a TCP socket (reused, unmodified)
 ```
 
-Note: `../../zephyr/module.yml` (this repo's own root-level Zephyr module
+Note: `../../../zephyr/module.yml` (this repo's own root-level Zephyr module
 manifest, `name: zmk-workspace-renode-testing`) lives outside this skill
 directory, at the zmk-workspace repo root, since Zephyr module discovery
 requires `zephyr/module.yml` at a west project's root. It registers

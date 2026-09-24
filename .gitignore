@@ -6,8 +6,11 @@
 !README.md
 !AGENTS.md
 !.devcontainer/
-!skills/
-!skills/**
+!.agents/
+!.agents/skills/
+!.agents/skills/**
+!.codex/
+!.codex/config.toml
 !zephyr/module.yml
 !tools/
 !tools/**
