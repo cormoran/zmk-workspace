@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import configparser
+import copy
 import hashlib
 import json
 import re
@@ -252,19 +253,91 @@ def create(args: argparse.Namespace) -> None:
     print(f"Task history: {history}")
 
 
-def check(profile: Path, repo: Path, manifest: str) -> None:
+def fork_pinned(args: argparse.Namespace) -> None:
+    """Make an isolated, commit-pinned consumer profile from a checked baseline."""
+    base = workspace_path(args.base_profile)
+    repo = repository_path(args.repo)
+    manifest = manifest_file(repo, args.manifest)
+    check(base, repo, manifest)
+    baseline = profile_data(base)
+    if args.project not in baseline["requirements"]:
+        raise ProfileError(f"project is not in the baseline: {args.project}")
+    if not re.fullmatch(r"[0-9a-f]{40}", args.revision):
+        raise ProfileError("revision must be a full 40-character commit SHA")
+    source = PROJECTS / args.project
+    if not source.is_dir() or git(source, "cat-file", "-t", args.revision) != "commit":
+        raise ProfileError(f"commit is not available in {source}: {args.revision}")
+    original = baseline["requirements"][args.project]["revision"]
+    if original == args.revision:
+        raise ProfileError("the baseline already requires this revision")
+    suffix = hashlib.sha256(f"{args.project}:{args.revision}".encode()).hexdigest()[:8]
+    profile = WORKSPACES / f"{base.name}_pin-{suffix}"
+    if profile.exists():
+        raise ProfileError(f"profile already exists: {profile}")
+    document = yaml.safe_load((base / "workspace-config/west.yml").read_text(encoding="utf-8"))
+    entries = [p for p in document["manifest"]["projects"] if p["name"] == args.project]
+    if len(entries) != 1:
+        raise ProfileError(f"expected one manifest entry for {args.project}")
+    entries[0]["revision"] = args.revision
+    # Freeze the ZMK checkout too: this integration profile represents one
+    # exact dependency set, even when the source profile follows a branch.
+    zmk = next(p for p in document["manifest"]["projects"] if p["name"] == "zmk")
+    if not re.fullmatch(r"[0-9a-f]{40}", zmk["revision"]):
+        zmk["revision"] = git(base / zmk["path"], "rev-parse", "HEAD")
+    metadata = copy.deepcopy(baseline)
+    metadata["requirements"][args.project]["revision"] = args.revision
+    metadata["pinned_overrides"] = {args.project: original}
+    metadata["source_profile"] = base.name
+    config = profile / "workspace-config"
+    config.mkdir(parents=True)
+    (config / "west.yml").write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    (config / "profile.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+    (profile / ".west").mkdir()
+    (profile / ".west/config").write_text(
+        "[manifest]\npath = workspace-config\nfile = west.yml\n\n[zephyr]\nbase = zephyr\n",
+        encoding="utf-8",
+    )
+    run("west", "manifest", "--validate", cwd=profile)
+    if Path(run("west", "topdir", cwd=profile)) != profile:
+        raise ProfileError("West did not select the new profile as its topdir")
+    run("west", "update", "--narrow", "--path-cache", str(base), cwd=profile, capture=False)
+    check(profile, repo, manifest, allow_pinned_overrides=True)
+    try:
+        history = record_profile(profile, repo, args.task)
+    except (ValueError, OSError, subprocess.CalledProcessError) as exc:
+        raise ProfileError(f"profile created, but history registration failed: {exc}") from exc
+    print(f"Created {profile}")
+    print(f"Pinned {args.project} at {args.revision}")
+    print(f"Task history: {history}")
+
+
+def check(profile: Path, repo: Path, manifest: str, *, allow_pinned_overrides: bool = False) -> None:
     data = profile_data(profile)
     doc = resolved(repo, manifest, profile)
     actual = projects(doc)
     expected = data["requirements"]
+    overrides = data.get("pinned_overrides", {}) if allow_pinned_overrides else {}
     differences = []
+    if overrides:
+        profile_manifest_doc = yaml.safe_load(
+            (profile / "workspace-config/west.yml").read_text(encoding="utf-8")
+        )
+        pinned_entries = projects(profile_manifest_doc["manifest"])
+        for name in overrides:
+            if pinned_entries.get(name, {}).get("revision") != expected[name]["revision"]:
+                differences.append(f"{name}: profile manifest does not pin the recorded revision")
     for name, project in actual.items():
         previous = expected.get(name)
         if previous is None:
             differences.append(f"{name}: missing from profile")
         else:
             for field in ("url", "revision", "path"):
-                if project[field] != previous[field]:
+                if project[field] != previous[field] and not (
+                    field == "revision"
+                    and name in overrides
+                    and project[field] == overrides[name]
+                    and re.fullmatch(r"[0-9a-f]{40}", previous[field])
+                ):
                     differences.append(
                         f"{name}: {field} requires {project[field]}, profile has {previous[field]}"
                     )
@@ -288,18 +361,18 @@ def check(profile: Path, repo: Path, manifest: str) -> None:
 def verify(args: argparse.Namespace) -> None:
     profile = workspace_path(args.profile)
     repo = repository_path(args.repo)
-    check(profile, repo, manifest_file(repo, args.manifest))
+    check(profile, repo, manifest_file(repo, args.manifest), allow_pinned_overrides=args.allow_pinned_overrides)
     print(f"Compatible: {repo} -> {profile}")
 
 
-def matching_profiles(repo: Path, manifest: str, candidates: list[Path]) -> tuple[list[Path], list[str]]:
+def matching_profiles(repo: Path, manifest: str, candidates: list[Path], *, allow_pinned_overrides: bool = False) -> tuple[list[Path], list[str]]:
     matches = []
     failures = []
     for profile in candidates:
         if not (profile / "workspace-config/profile.json").is_file():
             continue
         try:
-            check(profile, repo, manifest)
+            check(profile, repo, manifest, allow_pinned_overrides=allow_pinned_overrides)
             matches.append(profile)
         except (ProfileError, subprocess.SubprocessError, ValueError) as exc:
             failures.append(f"{profile.name}: {exc}")
@@ -321,6 +394,8 @@ def find(args: argparse.Namespace) -> None:
 
 def add_worktree(args: argparse.Namespace) -> None:
     repo = repository_path(args.repo)
+    if args.allow_pinned_overrides and not args.profile:
+        raise ProfileError("--allow-pinned-overrides requires an explicit --profile")
     branch = args.branch
     if not branch or Path(branch).is_absolute() or ".." in Path(branch).parts:
         raise ProfileError("branch must be a safe relative path")
@@ -347,7 +422,9 @@ def add_worktree(args: argparse.Namespace) -> None:
                 [workspace_path(args.profile)] if args.profile
                 else sorted(WORKSPACES.glob("zephyr-*_zmk-*"))
             )
-            matches, failures = matching_profiles(stage, manifest, candidates)
+            matches, failures = matching_profiles(
+                stage, manifest, candidates, allow_pinned_overrides=args.allow_pinned_overrides
+            )
             if len(matches) != 1:
                 detail = "\n".join(failures)
                 raise ProfileError(f"expected one compatible profile, found {len(matches)}\n{detail}")
@@ -388,10 +465,19 @@ def main() -> int:
     create_parser.add_argument("--manifest")
     create_parser.add_argument("--task", required=True, help="short task or issue description for the profile log")
     create_parser.set_defaults(action=create)
+    fork_parser = sub.add_parser("fork-pinned", help="create an isolated profile with one dependency pinned to a commit")
+    fork_parser.add_argument("base_profile")
+    fork_parser.add_argument("repo")
+    fork_parser.add_argument("project")
+    fork_parser.add_argument("revision")
+    fork_parser.add_argument("--manifest")
+    fork_parser.add_argument("--task", required=True)
+    fork_parser.set_defaults(action=fork_pinned)
     check_parser = sub.add_parser("check", help="check a module against a profile")
     check_parser.add_argument("profile")
     check_parser.add_argument("repo")
     check_parser.add_argument("--manifest")
+    check_parser.add_argument("--allow-pinned-overrides", action="store_true")
     check_parser.set_defaults(action=verify)
     find_parser = sub.add_parser("find", help="list profiles compatible with a module")
     find_parser.add_argument("repo")
@@ -402,6 +488,7 @@ def main() -> int:
     worktree_parser.add_argument("branch")
     worktree_parser.add_argument("--manifest")
     worktree_parser.add_argument("--profile", help="select a profile when several are compatible")
+    worktree_parser.add_argument("--allow-pinned-overrides", action="store_true")
     worktree_parser.add_argument("--task", required=True, help="short task or issue description for the worktree log")
     worktree_parser.set_defaults(action=add_worktree)
     args = parser.parse_args()

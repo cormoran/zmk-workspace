@@ -66,6 +66,10 @@ fetch-and-baseline selection for its `worktree` command; omit `--start`.
 - For building a consumer firmware with local changes to one of its West
   dependencies (and possibly temporary consumer changes), read
   [references/dependency-integration.md](references/dependency-integration.md).
+- For building a consumer against a fixed commit from a dependency feature
+  branch, read the pinned-revision section of that guide. This uses an
+  isolated profile and an explicit compatibility-check exception; it does
+  not place an editable dependency worktree at West's project path.
 - For changes to ZMK itself, ZMK's own tests, or building another module
   against modified ZMK, read
   [references/zmk-development.md](references/zmk-development.md). The current

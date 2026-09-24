@@ -1,4 +1,48 @@
-# Building a consumer with an edited module dependency
+# Building a consumer with a different module dependency
+
+## Pinned remote feature revision
+
+For a committed feature revision available from the module's remote, keep
+the consumer's declared manifest intact. Resolve its complete standalone
+manifest (for DYA2, `config/west-standalone.yml`, which imports
+`west-dependency.yml`). Check an existing profile against all active
+requirements and installed HEADs; if none matches, use `shared_west.py init`
+with that complete manifest and the consumer's initialized standalone
+dependencies to create a baseline first. Fetch the module's remote branch in
+`projects/<module>` and verify its exact commit. Then create a separate
+profile whose West manifest pins that one project to
+the commit. `tools/shared_west.py fork-pinned` does this, pins ZMK to the
+baseline's installed commit, updates dependencies only in the new profile,
+and validates the result:
+
+```bash
+python3 tools/shared_west.py fork-pinned <base-profile> <consumer> \
+  <module-project> <full-commit-sha> --manifest config/west-standalone.yml \
+  --task '<task>'
+python3 tools/shared_west.py worktree <consumer> <new-branch> \
+  --manifest config/west-standalone.yml --profile <new-profile> \
+  --allow-pinned-overrides --task '<task>'
+```
+
+Run both from the workspace root in the Nix devShell. The worktree command
+fetches the consumer's `origin/main` (or `cormoran/main`) before creating a
+new branch. The override flag is valid only for this dedicated profile and
+its named, pinned project. Ordinary `find` and `check` do not silently accept
+the profile as compatible with the consumer's floating revision. Use
+`check --allow-pinned-overrides` with the explicit profile when rechecking.
+
+Before building, verify `west topdir`, `west list <module-project> -f
+'{abspath} {revision}'`, the module checkout's HEAD and `manifest-rev`, and
+the configured Zephyr module paths (for example `zephyr_modules.txt` in the
+target's build directory). All must select the new profile's module exactly once.
+Build in the consumer worktree's own directory and record the profile,
+consumer and module HEADs and dirty states, target, and UF2 path under
+`docs/local/`. Never alter the existing profile or use `ZMK_EXTRA_MODULES` to
+replace a manifest project. A consumer that contains `zephyr/module.yml` may
+need `west zmk-build -m .` to expose its board and shield; this adds the
+consumer, not another copy of the pinned dependency.
+
+## Editable local dependency
 
 Use this guide when an edited module needs validation through a consumer's
 firmware. For example, build `zmk-keyboard-dya2` with local changes to
@@ -66,5 +110,6 @@ move a module worktree into an existing shared profile, replace its dependency
 checkout, or weaken the normal check to force a build. A dedicated integration
 profile and an explicit check exception for its named editable dependency need
 helper support before this workflow can be performed under shared profiles.
-Until then, report this support boundary rather than claim that a build from
-an ordinary shared profile tested the local dependency edits.
+The `fork-pinned` workflow above is only for committed revisions, not local
+edits. Until editable dependency support exists, report this boundary rather
+than claim that a build from an ordinary shared profile tested local edits.
