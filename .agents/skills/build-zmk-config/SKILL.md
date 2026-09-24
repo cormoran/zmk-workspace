@@ -13,39 +13,39 @@ Use this workspace's Nix devShell for all west commands:
 nix --extra-experimental-features 'nix-command flakes' develop /path/to/zmk-workspace/nix --command bash -lc '<commands>'
 ```
 
-Prefer a clone-root west workspace for parallel work: clone each zmk-config into its own directory and make that clone the west topdir. Use a repository-root workspace only when the config or zmk-workspace instructions require it. Read `references/west-layouts.md` when the layout is unclear.
+For a project under this `zmk-workspace`, read `$shared-west-profiles`
+before setup. Place a project worktree in a compatible profile with
+`tools/shared_west.py`; the profile is the West topdir and the worktree owns
+its build directory. Read `references/west-layouts.md` for config manifests
+and the standalone fallback outside a supported shared profile.
 
 ## Initialize
 
-For clone-root configs with `config/west-isolated.yml`:
+Clone a config under `projects/<repo>` and resolve its complete test manifest.
+When the helper supports that manifest, use:
 
 ```bash
-cd <zmk-config>
-west init -l config --mf west-isolated.yml
-west update --narrow
-west zephyr-export
+python3 tools/shared_west.py find <repo> --manifest config/<complete-manifest>.yml
+python3 tools/shared_west.py worktree <repo> <branch> \
+  --manifest config/<complete-manifest>.yml --profile <profile>
 ```
 
-For official-style configs such as `zmkfirmware/unified-zmk-config-template`, where `config/west.yml` contains `self: path: config`:
+Run those commands from the `zmk-workspace` root. If no compatible profile
+exists, follow `$shared-west-profiles` to provision one from initialized
+standalone dependencies. Some official-style configs have a different
+manifest layout that `shared_west.py` cannot yet resolve; report that limit
+instead of running `west init` or `west update` inside a shared worktree.
 
-```bash
-cd <zmk-config>
-west init -l config
-west update --narrow
-west zephyr-export
-```
-
-Verify clone-root initialization:
+From the created worktree, verify the selected workspace and ZMK checkout:
 
 ```bash
 west topdir
+west list zmk -f '{abspath}'
 ```
-
-It must print the cloned config directory.
 
 ## Choose Build Method
 
-After `west update`, choose the build method from the workspace:
+In the selected profile, choose the build method from the workspace:
 
 - Use `west zmk-build` when the manifest imports `zmk-west-commands` or `west help zmk-build` works. This command understands `build.yaml`.
 - Use manual `west build` when `zmk-build` is unavailable, including the official unified template.
@@ -115,6 +115,5 @@ For `west zmk-build`, compare the target count printed from `build.yaml` with th
 When tests are requested, run repository tests that exist in addition to firmware builds:
 - `python -m unittest` for zmk modules or configs with Python tests
 - `west twister` only when the config/module provides Zephyr tests and the needed platform is clear
-- this skill's own `quick_validate.py` after editing the skill
 
 Report exact target names, board/shield/snippet values, artifact paths, and the first actionable CMake/Kconfig/devicetree error when a build fails.

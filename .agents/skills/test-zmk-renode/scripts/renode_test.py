@@ -263,7 +263,7 @@ class RenodeZmkTests(unittest.TestCase):
             "west",
             "build",
             "-s",
-            str(build_fw.WEST_TOPDIR / "dependencies" / "zmk" / "app"),
+            str(build_fw.west_project_path(build_fw.WEST_TOPDIR, "zmk") / "app"),
             "-d",
             str(build_dir),
             "-b",

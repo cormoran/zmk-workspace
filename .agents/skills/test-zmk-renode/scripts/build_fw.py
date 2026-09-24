@@ -17,15 +17,15 @@ Two ways to call this:
        python build_fw.py --role central --pristine
        python build_fw.py --role peripheral
 
-   These always target `ZMK_STUDIO_RPC_PERF_DIR` (default
-   `zmk-feature-studio-rpc-perf` next to this workspace) and the
-   `my_awesome_keyboard` shield -- exactly as before the refactor.
+   These target `ZMK_STUDIO_RPC_PERF_DIR`, or the sole matching worktree under
+   `ws/*/wt-zmk-feature-studio-rpc-perf/`, and the `my_awesome_keyboard`
+   shield.
 
 2. Generic builds (used by any module repo, e.g. via the
    `zmk-renode-test` composite action)::
 
        python build_fw.py \\
-           --west-topdir /path/to/module/checkout \\
+           --west-topdir /path/to/module/worktree \\
            --board xiao_ble//zmk \\
            --shield tester_xiao \\
            --zmk-config /path/to/module/tests/zmk-config/config \\
@@ -66,9 +66,34 @@ RENODE_TEST_MODULE = SKILL_DIR / "renode-test-module"
 
 # -- Skill-compat (role-based) defaults -------------------------------------
 
-WEST_TOPDIR = Path(
-    os.environ.get("ZMK_STUDIO_RPC_PERF_DIR", ZMK_WORKSPACE / "zmk-feature-studio-rpc-perf")
-).resolve()
+
+def default_module_worktree() -> Path | None:
+    supplied = os.environ.get("ZMK_STUDIO_RPC_PERF_DIR")
+    if supplied:
+        return Path(supplied).resolve()
+    candidates = [
+        path
+        for path in (ZMK_WORKSPACE / "ws").glob("*/wt-zmk-feature-studio-rpc-perf/**")
+        if (path / ".git").exists() and (path / "tests/zmk-config/config").is_dir()
+    ]
+    return candidates[0].resolve() if len(candidates) == 1 else None
+
+
+WEST_TOPDIR = default_module_worktree()
+
+
+def west_project_path(checkout: Path, project: str) -> Path:
+    if checkout is None:
+        raise SystemExit("select a shared-profile worktree before resolving West projects")
+    result = subprocess.run(
+        ["west", "list", project, "-f", "{abspath}"],
+        cwd=checkout,
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode:
+        raise SystemExit(f"west list {project} failed: {result.stderr.strip()}")
+    return Path(result.stdout.strip()).resolve()
 
 BOARD = "xiao_ble//zmk"
 SHIELD = "my_awesome_keyboard"
@@ -188,10 +213,13 @@ def _run_west_build(cmd: list[str], cwd: Path, build_dir: Path, quiet: bool) -> 
 
 
 def build(role: str, pristine: bool = False, quiet: bool = False) -> Path:
-    """Skill-compat role build -- unchanged behavior/output from before the
-    generalization, used by renode_test.py (the regression gate)."""
+    """Role build for renode_test.py's regression gate."""
     if role not in ROLE_CONFIG:
         raise SystemExit(f"unknown role {role!r}, expected one of {sorted(ROLE_CONFIG)}")
+    if WEST_TOPDIR is None:
+        raise SystemExit(
+            "set ZMK_STUDIO_RPC_PERF_DIR to a compatible shared-profile worktree"
+        )
     cfg = ROLE_CONFIG[role]
 
     build_dir = WEST_TOPDIR / "build" / cfg["build_dir_name"]
@@ -204,7 +232,7 @@ def build(role: str, pristine: bool = False, quiet: bool = False) -> Path:
         "west",
         "build",
         "-s",
-        str(WEST_TOPDIR / "dependencies" / "zmk" / "app"),
+        str(west_project_path(WEST_TOPDIR, "zmk") / "app"),
         "-d",
         str(build_dir),
         "-b",
@@ -239,11 +267,10 @@ def build_generic(
     pristine: bool = False,
     quiet: bool = False,
 ) -> Path:
-    """Generic Renode build for any module repo's own west workspace.
+    """Generic Renode build from a module checkout in a West workspace.
 
-    `west_topdir` is that repo's own west workspace root (its `.west/`
-    dir's parent -- typically the repo checkout itself for a module with an
-    embedded workspace, per this template's layout). `module_paths` should
+    `west_topdir` is a module checkout or worktree from which `west list`
+    resolves the selected profile. `module_paths` should
     include the module repo itself and any `ZMK_EXTRA_MODULES` entries it
     needs (its own tests/zmk-config dir, sibling feature modules, ...) --
     this script always appends `renode-test-module` (the Renode Studio UART
@@ -251,7 +278,7 @@ def build_generic(
     `studio_transport=False`.
     """
     west_topdir = Path(west_topdir).resolve()
-    zmk_app = Path(zmk_app) if zmk_app else west_topdir / "dependencies" / "zmk" / "app"
+    zmk_app = Path(zmk_app) if zmk_app else west_project_path(west_topdir, "zmk") / "app"
 
     overlay_path = OVERLAY_ALIASES.get(overlay)
     if overlay_path is None:

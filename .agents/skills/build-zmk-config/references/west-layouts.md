@@ -1,80 +1,45 @@
-# ZMK west Workspace Layouts
+# West layouts for ZMK configs
 
-## Clone-root layout
+## Config under zmk-workspace
 
-Goal: each cloned zmk-config is its own west topdir.
+Follow `$shared-west-profiles` first. Clone the source into
+`projects/<repo>` and select or create a compatible profile from the
+config's complete active manifest. Put a branch worktree at
+`ws/<profile>/wt-<repo>/<branch>`. `west topdir` from that worktree must name
+the profile; `west list zmk -f '{abspath}'` must name its ZMK checkout. Build
+with `-d ./build` in the worktree. The source checkout is for provisioning,
+not feature builds.
 
-Use when parallel builds matter or when the config supports an isolated manifest.
+`shared_west.py` accepts `--manifest config/<file>.yml` for layouts it can
+resolve. Its current profile creation expects a complete manifest containing
+ZMK and Zephyr, and dependency paths under `dependencies/`. Some official
+configs use different paths or import structures; a failed compatibility or
+layout check does not authorize changing a populated shared profile. Report
+the unsupported layout and extend the helper if that is in scope.
 
-Common commands:
+Do not run `west init` or `west update` in a shared worktree. An existing
+standalone source checkout with its own `.west` remains standalone until a
+new worktree is created in a compatible profile.
+
+## Standalone layout outside a shared profile
+
+Use this for an external repo or for a temporary seed checkout when creating
+a new shared profile. For a config with `config/west-isolated.yml`:
 
 ```bash
 cd <zmk-config>
 west init -l config --mf west-isolated.yml
 west update --narrow
 west zephyr-export
-west zmk-build -d ./build -q
+west topdir
 ```
 
-If `config/west.yml` imports `west-isolated.yml`, `west init -l config` is also valid.
+For an official-style config with `self: path: config` in `config/west.yml`,
+use `west init -l config` instead. The clone is the West topdir in these
+standalone layouts. Locate the ZMK app with
+`west list zmk -f '{abspath}'`; do not assume a fixed `dependencies/zmk`
+path.
 
-Official-style clone-root configs may only provide `config/west.yml` with:
-
-```yaml
-self:
-  path: config
-```
-
-For those, use:
-
-```bash
-cd <zmk-config>
-west init -l config
-west update --narrow
-west zephyr-export
-```
-
-Expected shape:
-
-```text
-<zmk-config>/
-  .west/
-  build.yaml
-  build/
-  config/
-  dependencies/
-```
-
-Use `west topdir` after init. It must print `<zmk-config>`.
-
-If the config lacks `zmk-west-commands`, build manually with `west build -s "$(west list zmk -f '{abspath}')/app" ...`.
-
-## Repository-root layout
-
-Goal: the surrounding zmk-workspace directory is the west topdir, and the config is one project inside it.
-
-Use only when the config or workspace instructions explicitly expect it.
-
-Common commands from the zmk-workspace root:
-
-```bash
-west init -m <repo-url> --mf config/west-workspace.yml
-west update --narrow
-west zephyr-export
-west zmk-build ./<config-dir>/ -q
-```
-
-Expected shape:
-
-```text
-<zmk-workspace>/
-  .west/
-  <zmk-config>/
-  zmk/
-  zephyr/
-  modules/
-```
-
-## Pitfall
-
-`west init -l . --mf config/west-workspace.yml` from inside a config clone may create `.west` in the clone's parent. That is a repository-root workspace with the parent as topdir, not a clone-root workspace.
+`west init -l . --mf config/west-workspace.yml` from a config clone can
+initialize its parent as topdir. Check `west topdir` before any build or
+dependency update.

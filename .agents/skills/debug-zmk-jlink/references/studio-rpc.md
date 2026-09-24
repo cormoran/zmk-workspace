@@ -15,11 +15,15 @@ USB Studio transport is CDC/ACM UART. BLE transport uses the Studio service `000
 
 ## Proto Loading
 
-Local ZMK checkouts usually include the Studio messages at:
+Resolve the Studio messages checkout from the selected West profile:
 
-```text
-dependencies/modules/msgs/zmk-studio-messages/proto/zmk
+```bash
+west list zmk-studio-messages -f '{abspath}'
 ```
+
+Its protobuf files are under `proto/zmk/` in that checkout. A standalone
+workspace may instead place it under
+`dependencies/modules/msgs/zmk-studio-messages/`.
 
 Important files:
 

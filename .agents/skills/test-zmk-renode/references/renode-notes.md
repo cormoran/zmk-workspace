@@ -75,7 +75,7 @@ non-obvious behavior here cost real debugging time to pin down.
 
 ## Build: environment / west invocation
 
-- `west build` needs `-s dependencies/zmk/app` (the actual Zephyr
+- `west build` needs `-s "$(west list zmk -f '{abspath}')/app"` (the actual Zephyr
   *application* source dir). Running `west build` from
   `zmk-feature-studio-rpc-perf/`'s own root without `-s` picks up that
   repo's own top-level `CMakeLists.txt`, which is a Zephyr *module*

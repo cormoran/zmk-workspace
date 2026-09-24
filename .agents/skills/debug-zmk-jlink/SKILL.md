@@ -41,7 +41,12 @@ If the XIAO currently has **no USB identity** (for example, its application does
 
 ## Required Setup
 
-Invoke `$build-zmk-config` when the project has a matching config; otherwise use its documented `west` build workflow for the available fixture. Keep the build log, `.config`, `build_info.yml` when generated, `zephyr/zmk.elf`, `zephyr/zmk.map`, and generated UF2/HEX. If the repo provides a Nix devShell for west, use it.
+Read `$shared-west-profiles` before building a ZMK project under this
+workspace. Invoke `$build-zmk-config` when the project has a matching config;
+otherwise use its documented `west` build workflow for the available fixture.
+Verify the worktree's `west topdir` and `west list zmk -f '{abspath}'`. Keep
+the build log, `.config`, `build_info.yml` when generated, `zephyr/zmk.elf`,
+`zephyr/zmk.map`, and generated UF2/HEX. Use the Nix devshell for West.
 
 Check tools before interacting with hardware:
 
@@ -95,7 +100,12 @@ For deeper guidance, read [references/zmk-debug-checklist.md](references/zmk-deb
 
 ## Studio RPC
 
-Read the project RPC doc first. Prefer `docs/zmk-studio-rpc.md` if present in the user's repo; otherwise read ZMK's upstream `docs/docs/development/studio-rpc-protocol.md` in the checked-out ZMK dependency. Then inspect the local proto files under `dependencies/modules/msgs/zmk-studio-messages/proto/zmk` and any module-owned custom subsystem proto files.
+Read the project RPC doc first. Prefer `docs/zmk-studio-rpc.md` if present in
+the user's repo; otherwise read ZMK's upstream
+`docs/docs/development/studio-rpc-protocol.md` under
+`west list zmk -f '{abspath}'`. Find the Studio messages checkout with
+`west list zmk-studio-messages -f '{abspath}'`, then inspect its `proto/zmk`
+and any module-owned custom subsystem proto files.
 
 In this workspace, prefer the documented CLI:
 
@@ -119,7 +129,7 @@ Use the bundled low-level RPC helper only when the repo CLI is unavailable or wh
 ```bash
 python3 <skill>/scripts/zmk_studio_rpc_probe.py \
   --port /dev/ttyACM0 \
-  --proto-dir dependencies/modules/msgs/zmk-studio-messages/proto/zmk \
+  --proto-dir "$(west list zmk-studio-messages -f '{abspath}')/proto/zmk" \
   --device-info --lock-state --list-custom --read-notifications 2
 ```
 

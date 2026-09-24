@@ -79,10 +79,13 @@ JLinkExe -NoGui 1 -CommandFile /tmp/probe-core-check.jlink
 - `custom_settings_split_peripheral_with_rpc_relay`: snippet `custom-settings-split-rpc-relay` only (default role = peripheral). No Studio/console — this board won't expose a `zmk-hp-zmk-tty-*` node.
 - `custom_settings_split_central_with_rpc_relay`: snippets `custom-settings-split-rpc-relay` + `custom-settings-split-central` + `studio-rpc-usb-uart`. Sets `CONFIG_ZMK_SPLIT_ROLE_CENTRAL=y` and enables Studio over USB CDC ACM, so this board *does* get a `zmk-hp-zmk-tty-*` node.
 
-Build both with `$build-zmk-config`'s `west zmk-build`:
+Read `$shared-west-profiles`, place the config/module branch in a compatible
+profile, and verify `west topdir` and `west list zmk -f '{abspath}'` from its
+worktree. Build both with `$build-zmk-config`'s `west zmk-build` using a
+worktree-local build directory:
 
 ```bash
-west zmk-build tests/zmk-config -d tests/zmk-config/build -q
+west zmk-build tests/zmk-config -m . -d ./build -q
 ```
 
 You only need the two `*_split_*` artifacts for pairing; the other targets in that `build.yaml` are unrelated single-board configs.

@@ -20,7 +20,8 @@ for the two tiers that are green. What's substituted:
   `main()`, unconditionally, regardless of USB class (HID, CDC-ACM,
   whatever). USB is simply not usable under this Renode nRF52840 model,
   full stop. The RPC *byte framing on the wire* is identical either way
-  (see `dependencies/zmk/app/src/studio/uart_rpc_transport.c`); only the
+  (see `app/src/studio/uart_rpc_transport.c` in the ZMK checkout selected by
+  `west list zmk -f '{abspath}'`); only the
   physical carrier changes, and — see below — how the transport gets
   *selected* had to change too.
 - **Split over BLE → split over wired UART.** Two Renode machines, one
@@ -45,6 +46,13 @@ Run everything: `python .agents/skills/test-zmk-renode/scripts/renode_test.py -v
 
 ## Setup
 
+For a module under this workspace, read `$shared-west-profiles` and run the
+harness from a compatible module worktree under `ws/<profile>/`. Confirm
+`west topdir` and `west list zmk -f '{abspath}'` before testing. Set
+`ZMK_STUDIO_RPC_PERF_DIR` to the relevant
+`wt-zmk-feature-studio-rpc-perf/<branch>` worktree for role-based tests; the
+helper auto-selects it only when exactly one matching worktree exists.
+
 Install Renode (portable tarball, no system mono/dotnet needed):
 
 ```bash
@@ -66,7 +74,7 @@ python -m unittest renode_test -v                # equivalent, module form
 Non-zero exit on any failure (standard `unittest` behavior) — safe to wire
 into CI. Firmware is (re)built automatically via `scripts/build_fw.py`
 (wraps `west build` with the exact flags this write-up documents); builds
-are cached under `zmk-feature-studio-rpc-perf/build/renode_*` and only
+are cached under the selected module worktree's `build/renode_*` and only
 rebuilt when the underlying overlay/module/Kconfig actually changes (west's
 own incremental build, `-p auto`).
 
@@ -211,9 +219,9 @@ differential write-up.
    fire before the other machine's own `SYS_INIT`-time UART RX-enable has
    necessarily run, and get silently dropped (no cross-machine execution
    ordering guarantee at t=0).
-6. **`west build` needs `-s dependencies/zmk/app`** (not the
-   `zmk-feature-studio-rpc-perf` repo root, which is a Zephyr *module*
-   manifest, not an application) plus explicit `ZEPHYR_TOOLCHAIN_VARIANT`/
+6. **`west build` needs `-s "$(west list zmk -f '{abspath}')/app"`**
+   (the module repository root is a Zephyr *module*, not an application)
+   plus explicit `ZEPHYR_TOOLCHAIN_VARIANT`/
    `ZEPHYR_SDK_INSTALL_DIR` (a stale CMake user-package-registry entry can
    otherwise point at a different project's Zephyr checkout entirely).
 

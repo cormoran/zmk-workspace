@@ -288,12 +288,18 @@ def compile_protos(proto_files, include_dirs, out_dir: Path | None = None) -> Pa
 
 
 def find_studio_proto_dir(west_topdir: Path) -> Path:
-    """Auto-discover zmk-studio-messages' `proto/zmk` dir under a west
-    topdir. Works for both this skill's own workspace and any module repo
-    using the standard `dependencies/modules/msgs/zmk-studio-messages`
-    west-manifest layout (falls back to a recursive search if the layout
-    differs)."""
+    """Find the Studio messages checkout selected by this West workspace."""
     west_topdir = Path(west_topdir)
+    listed = subprocess.run(
+        ["west", "list", "zmk-studio-messages", "-f", "{abspath}"],
+        cwd=west_topdir,
+        text=True,
+        capture_output=True,
+    )
+    if listed.returncode == 0:
+        project_proto = Path(listed.stdout.strip()) / "proto" / "zmk"
+        if project_proto.is_dir():
+            return project_proto
     direct = (
         west_topdir
         / "dependencies"
@@ -311,8 +317,7 @@ def find_studio_proto_dir(west_topdir: Path) -> Path:
         return matches[0]
 
     raise FileNotFoundError(
-        f"could not find zmk-studio-messages proto dir under {west_topdir} "
-        "(expected dependencies/modules/msgs/zmk-studio-messages/proto/zmk)"
+        f"could not find zmk-studio-messages proto dir from {west_topdir}"
     )
 
 

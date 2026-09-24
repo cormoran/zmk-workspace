@@ -7,21 +7,30 @@ description: Develop a ZMK module with custom Studio RPC + web UI from cormoran'
 
 ## Setup
 
-Clone the template as the new module repo and use the **isolated** west layout
-so each module clone is its own west topdir:
+Read `$shared-west-profiles` first. Clone the template under `projects/` as
+the source repository, then select a compatible profile and create the
+implementation branch as a worktree there:
 
 ```bash
-git clone https://github.com/cormoran/zmk-module-template-with-custom-studio-rpc <module-name>
-cd <module-name>   # default branch is main+custom-studio-protocol
-git checkout -b <impl-branch>
-nix --extra-experimental-features 'nix-command flakes' develop /path/to/zmk-workspace/nix \
-  --command bash -lc 'west init -l west --mf west-test-isolated.yml && west update --narrow && west zephyr-export'
+git clone https://github.com/cormoran/zmk-module-template-with-custom-studio-rpc projects/<module-name>
+python3 tools/shared_west.py find <module-name> --manifest west/west-test-isolated.yml
+python3 tools/shared_west.py worktree <module-name> <impl-branch> \
+  --manifest west/west-test-isolated.yml --profile <profile>
 ```
 
-Dependencies land in `./dependencies/` (ZMK fork `cormoran/zmk` branch
-`main+custom-studio-protocol`, `zmk-feature-custom-settings`,
-`zmk-west-commands`). Read the repo's `AGENTS.md` (init checklist, nanopb
-rules) and keep `DESIGN.md` in the repo as the phase-by-phase source of truth.
+Run West and builds in the Nix devshell. The current template pins ZMK to
+`fffa339c...`, so `find` does not match branch-based profiles and the current
+`shared_west.py init` rejects that SHA. If retaining that exact pin matters,
+the helper must gain SHA-based profile support before this setup can proceed.
+If the new module may instead follow a named ZMK branch, change its complete
+test manifest to that branch, initialize a temporary standalone seed from
+`west/west-test-isolated.yml`, and provision a new compatible profile as the
+shared-profile guide describes. Do not silently replace the pinned baseline.
+Dependencies then live under the selected `ws/<profile>/`, while the editable branch lives in
+`ws/<profile>/wt-<module-name>/<impl-branch>/`. Confirm `west topdir` and
+`west list zmk -f '{abspath}'` there. Read the module's `AGENTS.md` (init
+checklist, nanopb rules) and keep `DESIGN.md` in the module as the phase-by-phase
+source of truth.
 
 ## Orchestration pattern that works
 
@@ -46,8 +55,8 @@ ends (see `docs/hardware-locking.md` in the workspace repo).
 ```bash
 # inside nix devshell, repo root
 python3 -m unittest            # build tests (tests/zmk-config) + native_sim tests
-west zmk-build tests/zmk-config -q
-west zmk-test tests -m .
+west zmk-build tests/zmk-config -m . -d ./build -q
+west zmk-test tests -m . -d ./build
 cd web && npm ci && npm run generate && npm test && npm run lint && npm run build
 pre-commit run --all-files     # see pitfall about web hooks
 ```
@@ -90,7 +99,8 @@ pre-commit run --all-files     # see pitfall about web hooks
   devshell (broken bundled Node). Run the same checks directly with npm and use
   `SKIP=prettier,eslint,jest,web-build pre-commit run --all-files` for the rest.
 - **Web proto from a dependency module**: point `web/buf.gen.yaml` at the
-  dependency's proto dir (e.g. `../dependencies/zmk-feature-custom-settings/proto`)
+  installed module's proto dir (resolve it with
+  `west list zmk-feature-custom-settings -f '{abspath}'`)
   instead of vendoring into the repo's own `proto/` — the firmware nanopb glob
   would otherwise generate duplicate symbols.
 - The generic settings web/RPC subsystem identifier is
