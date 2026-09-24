@@ -2,109 +2,100 @@
 
 [![Test ZMK templates](https://github.com/cormoran/zmk-workspace/actions/workflows/zmk-config.yml/badge.svg)](https://github.com/cormoran/zmk-workspace/actions/workflows/zmk-config.yml)
 
-- Minium zephyr SDK setup with [Nix](https://nixos.org/)
-- Making use of thin west sub-command [cormoran/zmk-west-commands](https://github.com/cormoran/zmk-west-commands) for building ZMK
+This workspace provides a [Nix](https://nixos.org/) development environment for
+ZMK projects and tools for sharing a compatible West dependency checkout among
+module worktrees. Builds use the
+[cormoran/zmk-west-commands](https://github.com/cormoran/zmk-west-commands)
+West extension.
 
-## Codex setup
+## Directory structure
 
-Launch Codex from this repository root and trust the project so it loads
-[`.codex/config.toml`](.codex/config.toml). The project config gives Codex the
-shared West worktree rule. Repository skills in [`.agents/skills/`](.agents/skills/)
-are discovered automatically; the detailed dependency and worktree workflow is
-in [`shared-west-profiles`](.agents/skills/shared-west-profiles/SKILL.md).
-The remaining repository change and local output rules are in [AGENTS.md](AGENTS.md).
+```text
+.
+├── docs/       Documentation for the workspace and hardware setup
+├── nix/        Nix development-shell definition
+├── projects/   Standalone source checkouts (ignored by Git)
+├── tools/      Workspace utilities, including shared_west.py
+├── ws/         Shared West profiles and their module worktrees
+└── zephyr/     Workspace Zephyr module metadata
+```
 
-CI tests both `main` and `v0.3-branch` for the config and module templates in
-one matrix. Each job clones the source into `projects/<repo>`, installs West
-dependencies in its own `ws/ci-<repo>-<branch>` workspace, then creates and
-builds or tests `ws/ci-<repo>-<branch>/wt-<repo>/<branch>`. The West cache stores
-only dependency checkouts inside that CI workspace, not source worktrees or
-the workspace configuration.
-
-When launching Codex from a separate Git repository under `projects/` or from
-one of its worktrees, launch from this root first if the shared workspace rule
-is needed. Those nested repositories have their own Git root and do not inherit
-this repository's project configuration.
+`projects/<repo>` is the source repository you initially clone and initialize.
+A shared profile in `ws/<profile>` contains one West dependency set. Feature
+branches live below `ws/<profile>/wt-<repo>/<branch>`, so compatible branches
+reuse that dependency set. The profile's `workspace-config/` is tracked; its
+dependencies and worktrees are local files.
 
 ## Usage
 
-1. Install [nix](https://nixos.org/download/)
-2. `./init.sh`
-3. Initialize your zmk-config and build
-
-   Example with [cormoran/zmk-config-template](https://github.com/cormoran/zmk-config-template).
-
-   ```bash
-   $ west init -m https://github.com/cormoran/zmk-config-template --mf config/west-workspace.yml # --mr v0.3-branch
-   $ west update --narrow
-   $ west zephyr-export
-   $ west zmk-build  ./zmk-config-template/ -q
-   ```
-
-   Example with [cormoran/zmk-module-template](https://github.com/cormoran/zmk-module-template).
-
-   ```bash
-   $ west init -m https://github.com/cormoran/zmk-module-template --mf west/west-test-workspace.yml # --mr v0.3-branch
-   $ west update --narrow
-   $ west zephyr-export
-   $ python -m unittest
-   ```
-
-   Or ZMK official zmk-config
-
-   ```bash
-   $ west init -m https://github.com/zmkfirmware/unified-zmk-config-template --mf config/west.yml
-   $ west update --narrow
-   $ west zephyr-export
-   $ west build -b nice_nano -- -DSHIELD=kyria_left \
-      -DZMK_CONFIG="$(pwd)/unified-zmk-config-template/config"
-   ```
-
-   Tips: `zmk-build` sub command is provided by [cormoran/zmk-west-commands](https://github.com/cormoran/) west module.
-
-To re-initialize with other zmk-config, module, `rm -r .west` and do step3 again.
-
-## Shared West profiles for module worktrees
-
-For modules with a standalone West workspace and downloaded `dependencies/`,
-`tools/shared_west.py` creates a shared profile. Its name contains the checked
-out Zephyr commit and the **ZMK branch name**. ZMK can advance when the profile
-is explicitly updated; the other dependencies are pinned to the commits
-installed when the profile is created.
+Install [Nix](https://nixos.org/download/), then clone this repository and
+enter its development shell:
 
 ```bash
-python3 tools/shared_west.py init projects/zmk-behavior-runtime-sensor-rotate
-python3 tools/shared_west.py worktree zmk-behavior-runtime-sensor-rotate my-feature
+git clone https://github.com/cormoran/zmk-workspace.git
+cd zmk-workspace
+./init.sh
 ```
 
-The second command places a new or existing `my-feature` branch under
-`ws/<profile>/wt-zmk-behavior-runtime-sensor-rotate/my-feature`. Source Git
-checkouts live in `projects/<repo>`, and shared West workspaces live in
-`ws/<profile>`. The profile's `workspace-config/west.yml` and `profile.json`
-are tracked by this repository; dependencies and worktrees are ignored.
-An existing branch
-must not already be checked out elsewhere. The command checks all active
-dependency declarations before placing the worktree. If no compatible profile
-exists, it stops without changing shared dependencies. To provision another
-profile, initialize one from a matching standalone module workspace.
-Run `python3 tools/shared_west.py --help` for `check`, `--start`, and
-`--manifest` options. When several profiles satisfy the same declarations,
-pass `--profile <profile-name>` to select the intended dependency baseline.
+`./init.sh` is a shortcut for `nix develop ./nix`. Run the remaining commands
+from that shell.
 
-From the new worktree, `west topdir` points at the shared profile. Use a
-separate build directory per worktree:
+### Start a module
+
+Clone a module under `projects/` and initialize its standalone dependency tree.
+The manifest filename belongs to the module; this example uses
+[zmk-module-template](https://github.com/cormoran/zmk-module-template).
 
 ```bash
+git clone https://github.com/cormoran/zmk-module-template.git projects/zmk-module-template
+cd projects/zmk-module-template
+west init -l west --mf west-test-isolated.yml
+west update --narrow
+west zephyr-export
+cd ../..
+```
+
+Follow the selected project's README for its manifest and standalone build
+commands. Config repositories can remain standalone when a shared profile is
+not needed.
+
+### Create and use a shared profile
+
+Create a profile once from an initialized module. The command records the
+module's compatible dependency set in `ws/`.
+
+```bash
+python3 tools/shared_west.py init zmk-module-template
+```
+
+Create a feature worktree. The command finds a compatible profile, verifies the
+module's active dependencies, and prints the worktree path.
+
+```bash
+python3 tools/shared_west.py worktree zmk-module-template my-feature
+cd ws/<profile>/wt-zmk-module-template/my-feature
 west zmk-build tests/zmk-config -m . -d ./build -q
 ```
 
-Only update shared dependencies from the profile directory. For example,
-`west update zmk` advances its ZMK branch; then run `shared_west.py check` and
-the affected modules' build tests before continuing work. Each module keeps
-its standalone manifest, so a checkout outside a shared profile can still be
-initialized on its own. The generated profile's `workspace-config/west.yml`
-records the dependency commits. Trial details are in
-[`docs/shared-west-experiment.md`](docs/shared-west-experiment.md).
+Use a separate `build/` directory in every worktree. To inspect a specific
+profile before creating a branch, run:
+
+```bash
+python3 tools/shared_west.py check <profile> zmk-module-template
+```
+
+Only run dependency updates from the profile directory. After updating, check
+the affected modules and rebuild their worktrees:
+
+```bash
+cd ws/<profile>
+west update zmk
+python3 ../../tools/shared_west.py check <profile> zmk-module-template
+```
+
+Use `python3 tools/shared_west.py --help` for `--start`, `--manifest`, and
+`--profile`. For the profile design and its constraints, see
+[shared West profile experiment](docs/shared-west-experiment.md).
 
 ## Hardware
 

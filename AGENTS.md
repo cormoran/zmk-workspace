@@ -1,4 +1,15 @@
-# 作業ルール
+# Working rules
 
-- この `zmk-workspace` リポジトリ自体への変更は、現在のチェックアウトに直接行う。検証が成功したら、すぐに変更を commit して現在のブランチを origin に push する。
-- 一時的な調査メモやビルド結果（例: 日付付きの検証レポート）は `docs/local/` に保存する。このディレクトリは Git の追跡対象外とし、commit しない。
+- Make changes to this `zmk-workspace` repository in the current checkout.
+  After verification succeeds, commit the changes promptly and push the
+  current branch to `origin`.
+- Store temporary investigation notes and build results, such as dated
+  verification reports, in `docs/local/`. This directory is ignored by Git;
+  do not commit its contents.
+
+## ZMK project work
+
+Before working on a ZMK project under this workspace, read
+[`shared-west-profiles`](.agents/skills/shared-west-profiles/SKILL.md). Create
+or use a worktree in a compatible shared West profile and follow that skill's
+rules for dependency checks, worktree placement, updates, and builds.
