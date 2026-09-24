@@ -11,20 +11,16 @@ West extension.
 ## Directory structure
 
 ```text
-.
-├── docs/       Documentation for the workspace and hardware setup
-├── nix/        Nix development-shell definition
-├── projects/   Standalone source checkouts used to initialize profiles
-│   └── <repo>/
-│       ├── .west/ and dependencies/   Initial standalone West workspace
-│       └── …                           Source repository
-├── tools/      Workspace utilities, including shared_west.py
-├── ws/         Shared West profiles
-│   └── <profile>/
-│       ├── workspace-config/          Tracked profile manifest and metadata
-│       ├── zephyr/, zmk/, …            Shared West dependency checkouts
-│       └── wt-<repo>/<branch>/         Feature-branch Git worktrees
-└── zephyr/     Workspace Zephyr module metadata
+projects/                         Standalone source checkouts used to initialize profiles
+└── <repo>/
+    ├── .west/ and dependencies/       Initial standalone West workspace
+    └── …                               Source repository
+
+ws/                               Shared West profiles
+└── <profile>/
+    ├── workspace-config/              Tracked profile manifest and metadata
+    ├── zephyr/, zmk/, …                Shared West dependency checkouts
+    └── wt-<repo>/<branch>/             Feature-branch Git worktrees
 ```
 
 Use `projects/<repo>` to clone a module and initialize its standalone West
