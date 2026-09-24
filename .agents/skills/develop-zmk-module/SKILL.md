@@ -52,6 +52,10 @@ ends (see `docs/hardware-locking.md` in the workspace repo).
 
 ## Commands
 
+For changes under a module's `web/` directory, use `$develop-zmk-web-ui`
+before running this section's frontend commands. It includes the required
+render-loop and deployment-base regression checks.
+
 ```bash
 # inside nix devshell, repo root
 python3 -m unittest            # build tests (tests/zmk-config) + native_sim tests
