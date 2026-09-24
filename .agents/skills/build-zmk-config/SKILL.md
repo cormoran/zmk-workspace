@@ -116,4 +116,11 @@ When tests are requested, run repository tests that exist in addition to firmwar
 - `python -m unittest` for zmk modules or configs with Python tests
 - `west twister` only when the config/module provides Zephyr tests and the needed platform is clear
 
+For native-sim snapshot suites run `west zmk-test` as well. A successful
+build or a `PASS:` line in the generated log is not by itself a test oracle:
+inspect the case's `events.patterns` and paired `*.snapshot`, add the new
+stable expected line to both when behavior changes, then re-run the suite.
+Review the filtered output before accepting a snapshot update; snapshots must
+assert the feature's observable result, not incidental logging.
+
 Report exact target names, board/shield/snippet values, artifact paths, and the first actionable CMake/Kconfig/devicetree error when a build fails.

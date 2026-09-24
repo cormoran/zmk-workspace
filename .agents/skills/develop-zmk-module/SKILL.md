@@ -61,6 +61,33 @@ cd web && npm ci && npm run generate && npm test && npm run lint && npm run buil
 pre-commit run --all-files     # see pitfall about web hooks
 ```
 
+## Native-sim test quality contract
+
+For every firmware behavior change, add a test that observes the behavior at
+its public boundary (for example, call an input processor through its driver
+API and assert the transformed event), not only a test of stored settings or
+a manual inspection of a build log. Cover the enabled path, disabled/default
+path, boundary values, both signs when the domain is signed, and ordering
+relative to adjacent transformations when that ordering is part of the
+feature.
+
+Many module native-sim suites use a filtered-log snapshot oracle. Before
+claiming such a test is covered, inspect `tests/<case>/events.patterns` and
+its paired `*.snapshot` file:
+
+- Add a stable line for the new assertion to `events.patterns`.
+- Add the corresponding exact line, in execution order, to the snapshot.
+- Run `west zmk-test tests -m . -d <worktree-build-dir>` and require it to
+  pass. A `PASS:` line seen only in an untracked build log is diagnostic
+  evidence, not a CI assertion.
+- Do not blindly regenerate snapshots: first review the filtered output and
+  ensure it expresses the intended public behavior rather than incidental log
+  formatting.
+
+If the repository uses a different test oracle (ztest/Twister, a Python RPC
+test, or a web test), make the equivalent expected result part of that
+oracle. Builds and compilation checks alone do not test runtime semantics.
+
 ## Known pitfalls (all hit in practice)
 
 - **nanopb**: set `has_<field> = true` for every sub-message; never use 64-bit
