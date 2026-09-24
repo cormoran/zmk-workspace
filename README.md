@@ -50,17 +50,17 @@ from that shell.
 
 ### Start a module
 
-Clone the module under `projects/`, then select a compatible shared profile.
-Use `check` before creating a worktree to confirm the profile you intend to
-use.
+Clone the module under `projects/`, then use `find` to list compatible shared
+profiles. Select one of the printed profile names.
 
 ```bash
 git clone <module-url> projects/<repo>
-python3 tools/shared_west.py check <profile> <repo>
+python3 tools/shared_west.py find <repo>
 ```
 
 Create the branch worktree in that profile, and build from the resulting path.
-All development builds belong in `ws/<profile>/wt-<repo>/<branch>`.
+`worktree` checks the selected profile again. All development builds belong in
+`ws/<profile>/wt-<repo>/<branch>`.
 
 ```bash
 python3 tools/shared_west.py worktree <repo> <branch> --profile <profile>

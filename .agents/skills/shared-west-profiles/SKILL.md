@@ -80,7 +80,11 @@ shared worktree to force the new declaration.
    complete test manifest via `--manifest`. The tool re-resolves imports after
    updating ZMK and rejects a changed Zephyr revision. Remove the temporary
    seed worktree after profile creation.
-2. Place a new or existing feature branch in a compatible profile with
+2. List compatible profiles before placing a branch:
+   `python3 tools/shared_west.py find <module-repo>`. It prints compatible
+   profile names without changing the repository. Use `check <profile> <repo>`
+   when validating one named profile directly.
+   Place a new or existing feature branch in the selected profile with
    `python3 tools/shared_west.py worktree <module-repo> <feature> [--start REF]`.
    The script stages the checkout, resolves its manifest, checks every active
    dependency declaration, then moves it to `ws/<profile>/wt-<repo>/<feature>`.
@@ -108,6 +112,7 @@ equals the requested source branch commit. Verify `west topdir` in that
 worktree and build a dependent project that uses that exact installed commit.
 Report this as an integration build, not a standalone module build.
 
-Use `python3 tools/shared_west.py check <profile> <repo>` to inspect an
-existing module. Floating revisions such as `main` express a shared branch
-policy, not a tested SHA; builds establish compatibility after an update.
+Use `python3 tools/shared_west.py find <repo>` to select a compatible profile,
+or `check <profile> <repo>` to inspect a named profile. Floating revisions
+such as `main` express a shared branch policy, not a tested SHA; builds
+establish compatibility after an update.

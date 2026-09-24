@@ -267,6 +267,33 @@ def verify(args: argparse.Namespace) -> None:
     print(f"Compatible: {repo} -> {profile}")
 
 
+def matching_profiles(repo: Path, manifest: str, candidates: list[Path]) -> tuple[list[Path], list[str]]:
+    matches = []
+    failures = []
+    for profile in candidates:
+        if not (profile / "workspace-config/profile.json").is_file():
+            continue
+        try:
+            check(profile, repo, manifest)
+            matches.append(profile)
+        except (ProfileError, subprocess.SubprocessError, ValueError) as exc:
+            failures.append(f"{profile.name}: {exc}")
+    return matches, failures
+
+
+def find(args: argparse.Namespace) -> None:
+    repo = repository_path(args.repo)
+    manifest = manifest_file(repo, args.manifest)
+    matches, failures = matching_profiles(
+        repo, manifest, sorted(WORKSPACES.glob("zephyr-*_zmk-*"))
+    )
+    if not matches:
+        detail = "\n".join(failures)
+        raise ProfileError(f"no compatible profiles\n{detail}")
+    for profile in matches:
+        print(profile.name)
+
+
 def add_worktree(args: argparse.Namespace) -> None:
     repo = repository_path(args.repo)
     branch = args.branch
@@ -293,20 +320,11 @@ def add_worktree(args: argparse.Namespace) -> None:
         try:
             if not (stage / manifest).is_file():
                 raise ProfileError(f"manifest not found at start revision: {manifest}")
-            matches = []
-            failures = []
             candidates = (
                 [workspace_path(args.profile)] if args.profile
                 else sorted(WORKSPACES.glob("zephyr-*_zmk-*"))
             )
-            for profile in candidates:
-                if not (profile / "workspace-config/profile.json").is_file():
-                    continue
-                try:
-                    check(profile, stage, manifest)
-                    matches.append(profile)
-                except (ProfileError, subprocess.SubprocessError, ValueError) as exc:
-                    failures.append(f"{profile.name}: {exc}")
+            matches, failures = matching_profiles(stage, manifest, candidates)
             if len(matches) != 1:
                 detail = "\n".join(failures)
                 raise ProfileError(f"expected one compatible profile, found {len(matches)}\n{detail}")
@@ -343,6 +361,10 @@ def main() -> int:
     check_parser.add_argument("repo")
     check_parser.add_argument("--manifest")
     check_parser.set_defaults(action=verify)
+    find_parser = sub.add_parser("find", help="list profiles compatible with a module")
+    find_parser.add_argument("repo")
+    find_parser.add_argument("--manifest")
+    find_parser.set_defaults(action=find)
     worktree_parser = sub.add_parser("worktree", help="create a branch worktree in its compatible profile")
     worktree_parser.add_argument("repo")
     worktree_parser.add_argument("branch")
