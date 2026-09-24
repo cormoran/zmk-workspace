@@ -20,12 +20,6 @@ run `git fetch cormoran`. Create the branch from the fetched `origin/main` or
 remote, or an arbitrary commit. The shared-worktree helper performs this
 fetch-and-baseline selection for its `worktree` command; omit `--start`.
 
-Install the repository hook before allowing direct `git worktree add -b` or
-`git switch -c` use: `python3 tools/install_worktree_baseline_hook.py
-projects/<repo>`. It rejects a new local branch unless its tip equals the
-selected remote's `main`. Git has no hook before `worktree add`, so the hook
-validates the branch ref while the helper supplies the required fetch.
-
 ## Record why each resource was created
 
 - Give every `shared_west.py init` and `shared_west.py worktree` call a

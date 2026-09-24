@@ -2,8 +2,6 @@
 !.gitignore
 !nix/
 !.github/
-!.githooks/
-!.githooks/**
 !init.sh
 !README.md
 !AGENTS.md
