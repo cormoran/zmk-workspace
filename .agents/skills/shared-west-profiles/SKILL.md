@@ -37,6 +37,36 @@ verified pilot and the known limits.
   in this situation, so the script writes and validates the small local
   configuration directly.
 
+## Changing dependency requirements
+
+A module's active manifest declarations define the profile requirements. A
+change to a project's URL, revision, or path, including a ZMK or Zephyr
+version change, must use a new profile. Never alter an existing profile's
+`workspace-config/west.yml`, dependency HEADs, or run `west update` in a
+shared worktree to force the new declaration.
+
+1. In the existing shared worktree, change the complete module manifest and
+   commit the change. It is still attached to the old dependency profile, so
+   do not treat a build there as a test of the new dependency version.
+2. Make a temporary detached seed checkout under `projects/` at that commit.
+   Initialize its standalone dependencies using the module's manifest, so its
+   `dependencies/` tree matches the proposed complete test manifest. This is
+   provisioning work only; do not build the feature in the seed checkout.
+3. Create a new profile from the seed, supplying the complete test manifest
+   when it is not the tool's default:
+   `python3 tools/shared_west.py init <seed-checkout> --manifest <complete-test-manifest>`.
+   The tool generates a dependency suffix when the Zephyr and ZMK pair already
+   has a profile with different requirements. Validate and commit the new
+   root-tracked profile configuration, then push it as required by `AGENTS.md`.
+4. Prefer a successor branch in the new profile, starting at the manifest
+   change commit:
+   `python3 tools/shared_west.py worktree <repo> <successor-branch> --start <commit> --profile <new-profile>`.
+   Verify `west topdir` and build there with a worktree-local build directory.
+   To retain the same branch name, first commit the changes and remove the old
+   worktree, because `worktree` will not place a branch that Git already has
+   checked out elsewhere. Remove the temporary seed checkout after the new
+   profile is created.
+
 ## Workflow
 
 1. To seed a profile, use a module checkout in `projects/<repo>` with its

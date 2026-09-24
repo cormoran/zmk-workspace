@@ -86,6 +86,37 @@ with the preceding commands before building. Only run dependency updates from
 the profile directory. After updating, check the affected modules and rebuild
 their worktrees.
 
+### Change dependency versions
+
+Changing an active revision in a module's West manifest, including ZMK or
+Zephyr, requires a new shared profile. Do not change the current profile's
+`workspace-config/` or run `west update` in the feature worktree to force the
+new version.
+
+First commit the manifest change in the existing worktree. Create a temporary
+standalone seed checkout at that commit under `projects/`, initialize the
+dependencies required by its complete test manifest, and create a profile from
+that seed:
+
+```bash
+python3 tools/shared_west.py init <seed-checkout> --manifest <complete-test-manifest>
+```
+
+The command prints the new profile path. Create a successor branch from the
+manifest-change commit in that profile, then build there:
+
+```bash
+python3 tools/shared_west.py worktree <repo> <successor-branch> \
+  --start <manifest-change-commit> --profile <new-profile>
+cd ws/<new-profile>/wt-<repo>/<successor-branch>
+west zmk-build tests/zmk-config -m . -d ./build -q
+```
+
+Using a successor branch keeps the old worktree available for comparison. To
+keep the same branch name, commit its changes, remove its old worktree, and
+then run `worktree` with that branch and the new profile. Remove the temporary
+seed checkout after the new profile has been created.
+
 Use `python3 tools/shared_west.py --help` for `--start`, `--manifest`, and
 `--profile`. For the profile design and its constraints, see
 [shared West profile experiment](docs/shared-west-experiment.md).
