@@ -20,6 +20,8 @@ projects/                         Source checkouts used to initialize profiles
 ws/                               Shared West profiles
 └── <profile>/
     ├── workspace-config/              Local profile manifest and metadata
+    ├── log.jsonl                      Profile creation task history
+    ├── <repo>/<branch>_log.jsonl      Worktree creation task history
     ├── zephyr/, zmk/, …                Shared West dependency checkouts
     └── wt-<repo>/<branch>/             Feature-branch Git worktrees
 ```
@@ -64,7 +66,7 @@ Initialize the source repository's standalone dependencies according to that
 module's README. Then create a profile from `projects/<repo>`:
 
 ```bash
-python3 tools/shared_west.py init <repo>
+python3 tools/shared_west.py init <repo> --task '<task or issue>'
 ```
 
 This only creates shared dependencies under `ws/<profile>`; do not build in
@@ -77,7 +79,8 @@ from the resulting path. `worktree` checks the selected profile again. All
 development builds belong in `ws/<profile>/wt-<repo>/<branch>`.
 
 ```bash
-python3 tools/shared_west.py worktree <repo> <branch> --profile <profile>
+python3 tools/shared_west.py worktree <repo> <branch> --profile <profile> \
+  --task '<task or issue>'
 cd ws/<profile>/wt-<repo>/<branch>
 west zmk-build tests/zmk-config -m . -d ./build -q
 ```
@@ -100,7 +103,8 @@ dependencies required by its complete test manifest, and create a profile from
 that seed:
 
 ```bash
-python3 tools/shared_west.py init <seed-checkout> --manifest <complete-test-manifest>
+python3 tools/shared_west.py init <seed-checkout> \
+  --manifest <complete-test-manifest> --task '<task or issue>'
 ```
 
 The command prints the new profile path. Create a successor branch from the
@@ -108,7 +112,8 @@ manifest-change commit in that profile, then build there:
 
 ```bash
 python3 tools/shared_west.py worktree <repo> <successor-branch> \
-  --start <manifest-change-commit> --profile <new-profile>
+  --start <manifest-change-commit> --profile <new-profile> \
+  --task '<task or issue>'
 cd ws/<new-profile>/wt-<repo>/<successor-branch>
 west zmk-build tests/zmk-config -m . -d ./build -q
 ```
@@ -117,6 +122,12 @@ Using a successor branch keeps the old worktree available for comparison. To
 keep the same branch name, commit its changes, remove its old worktree, and
 then run `worktree` with that branch and the new profile. Remove the temporary
 seed checkout after the new profile has been created.
+
+Use the same task description for every profile and worktree created for one
+task, even across repositories. Creation history is append-only JSONL under
+ignored `ws/`. For a worktree placed manually, use
+`python3 tools/record_shared_west_history.py worktree --help` to register it
+after validation.
 
 Use `python3 tools/shared_west.py --help` for `--start`, `--manifest`, and
 `--profile`. For the profile design and its constraints, see

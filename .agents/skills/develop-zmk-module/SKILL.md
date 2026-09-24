@@ -15,7 +15,7 @@ implementation branch as a worktree there:
 git clone https://github.com/cormoran/zmk-module-template-with-custom-studio-rpc projects/<module-name>
 python3 tools/shared_west.py find <module-name> --manifest west/west-test-isolated.yml
 python3 tools/shared_west.py worktree <module-name> <impl-branch> \
-  --manifest west/west-test-isolated.yml --profile <profile>
+  --manifest west/west-test-isolated.yml --profile <profile> --task '<task>'
 ```
 
 Run West and builds in the Nix devshell. The current template pins ZMK to

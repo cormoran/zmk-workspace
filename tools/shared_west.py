@@ -18,6 +18,7 @@ import tempfile
 from pathlib import Path
 
 import yaml
+from record_shared_west_history import record_profile, record_worktree
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -224,7 +225,12 @@ def create(args: argparse.Namespace) -> None:
     (config / "west.yml").write_text(yaml.safe_dump(output, sort_keys=False), encoding="utf-8")
     run("west", "manifest", "--validate", cwd=profile)
     check(profile, repo, manifest)
+    try:
+        history = record_profile(profile, repo, args.task)
+    except (ValueError, OSError, subprocess.CalledProcessError) as exc:
+        raise ProfileError(f"profile created, but history registration failed: {exc}") from exc
     print("Dependencies updated and non-ZMK revisions pinned")
+    print(f"Task history: {history}")
 
 
 def check(profile: Path, repo: Path, manifest: str) -> None:
@@ -342,8 +348,16 @@ def add_worktree(args: argparse.Namespace) -> None:
             except ProfileError:
                 print(f"Worktree is at {target}, detached; branch checkout failed", file=sys.stderr)
                 raise
+            topdir = Path(run("west", "topdir", cwd=target))
+            if topdir != profile:
+                raise ProfileError(f"West selected the wrong topdir: {topdir}")
+            try:
+                history = record_worktree(profile, repo, branch, args.task, target)
+            except (ValueError, OSError, subprocess.CalledProcessError) as exc:
+                raise ProfileError(f"worktree created, but history registration failed: {exc}") from exc
             print(f"Created {target}")
-            print(f"West topdir: {run('west', 'topdir', cwd=target)}")
+            print(f"West topdir: {topdir}")
+            print(f"Task history: {history}")
         finally:
             if stage.exists():
                 run("git", "worktree", "remove", "--force", str(stage), cwd=repo)
@@ -355,6 +369,7 @@ def main() -> int:
     create_parser = sub.add_parser("init", help="create a profile from an initialized module workspace")
     create_parser.add_argument("repo")
     create_parser.add_argument("--manifest")
+    create_parser.add_argument("--task", required=True, help="short task or issue description for the profile log")
     create_parser.set_defaults(action=create)
     check_parser = sub.add_parser("check", help="check a module against a profile")
     check_parser.add_argument("profile")
@@ -371,6 +386,7 @@ def main() -> int:
     worktree_parser.add_argument("--start")
     worktree_parser.add_argument("--manifest")
     worktree_parser.add_argument("--profile", help="select a profile when several are compatible")
+    worktree_parser.add_argument("--task", required=True, help="short task or issue description for the worktree log")
     worktree_parser.set_defaults(action=add_worktree)
     args = parser.parse_args()
     try:

@@ -8,7 +8,8 @@ checkouts and places compatible Git worktrees under them.
 
 1. Keep the source checkout at `projects/<repo>`. To seed a new profile, first
    install its standalone `dependencies/` according to the module's complete
-   test manifest. Then run `python3 tools/shared_west.py init <repo>`; supply
+   test manifest. Then run `python3 tools/shared_west.py init <repo> --task
+   '<task>'`; supply
    `--manifest <complete-test-manifest>` if the default
    `west/west-test-standalone.yml` is not the right file. The source checkout
    is left alone.
@@ -16,8 +17,8 @@ checkouts and places compatible Git worktrees under them.
    or `check <profile> <repo>` to inspect one. The helper compares every active
    project's URL, declared revision, and path, then checks installed HEADs.
 3. Place a branch with `python3 tools/shared_west.py worktree <repo> <branch>
-   --profile <profile> [--start REF]`. The helper stages the checkout, checks
-   it against the selected profile, then moves it to
+   --profile <profile> --task '<task>' [--start REF]`. The helper stages the
+   checkout, checks it against the selected profile, then moves it to
    `ws/<profile>/wt-<repo>/<branch>`. `--start` is for a new branch; an existing
    branch must not already be checked out elsewhere. If several profiles
    match, select the intended baseline with `--profile`.
@@ -48,10 +49,12 @@ after editing the manifest, so a build there does not test the new dependency.
    and initialize its standalone dependencies from the complete test manifest.
    Use it only for provisioning, not feature builds.
 3. Run `python3 tools/shared_west.py init <seed-checkout> --manifest
-   <complete-test-manifest>`. The tool gives a dependency suffix if the same
-   Zephyr/ZMK pair needs a different dependency set. Validate the new profile.
+   <complete-test-manifest> --task '<task>'`. The tool gives a dependency suffix
+   if the same Zephyr/ZMK pair needs a different dependency set. Validate the
+   new profile.
 4. Prefer a successor branch with `python3 tools/shared_west.py worktree
-   <repo> <successor-branch> --start <commit> --profile <new-profile>`. Check
+   <repo> <successor-branch> --start <commit> --profile <new-profile>
+   --task '<task>'`. Check
    `west topdir` and build in that worktree. To retain the old branch name,
    first commit and remove its old worktree; a Git branch cannot be checked
    out in two worktrees. Remove the temporary seed checkout after provisioning.
@@ -76,4 +79,5 @@ place an integration worktree only after verifying that the profile declares
 the same repository URL and branch and that its installed dependency HEAD
 equals the requested source branch commit. Verify `west topdir`, then build a
 dependent project against that exact commit. Report an integration build,
-not a standalone module build.
+not a standalone module build. Register the manually placed worktree with
+`tools/record_shared_west_history.py worktree` as described in the main skill.

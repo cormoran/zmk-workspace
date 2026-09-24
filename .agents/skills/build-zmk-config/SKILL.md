@@ -27,7 +27,7 @@ When the helper supports that manifest, use:
 ```bash
 python3 tools/shared_west.py find <repo> --manifest config/<complete-manifest>.yml
 python3 tools/shared_west.py worktree <repo> <branch> \
-  --manifest config/<complete-manifest>.yml --profile <profile>
+  --manifest config/<complete-manifest>.yml --profile <profile> --task '<task>'
 ```
 
 Run those commands from the `zmk-workspace` root. If no compatible profile

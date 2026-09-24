@@ -11,6 +11,26 @@ profiles and their worktrees live in `ws/<profile>`. The whole `ws/` tree is
 local and ignored by Git. Never add profile manifests or build results to this
 repository.
 
+## Record why each resource was created
+
+- Give every `shared_west.py init` and `shared_west.py worktree` call a
+  `--task 'short task or issue description'`. The helper records the task only
+  after creation and compatibility checks succeed. Reuse the same description
+  across repositories involved in one task, adding an issue URL or ID when
+  available.
+- Profile creation appends to `ws/<profile>/log.jsonl`. Worktree creation
+  appends to `ws/<profile>/<repo>/<branch>_log.jsonl`; a branch containing `/`
+  creates matching subdirectories. Entries include a UTC timestamp, the task,
+  source repository, relevant commit, and resource path or baseline. These
+  JSONL files are local under ignored `ws/` and are never committed.
+- For a manually created profile or worktree supported by a guide, register
+  it after validation with `python3 tools/record_shared_west_history.py
+  profile --profile <profile> --repo projects/<repo> --task '<task>'` or
+  `python3 tools/record_shared_west_history.py worktree --profile <profile>
+  --repo projects/<repo> --branch <branch> --worktree <path> --task '<task>'`.
+  The script validates the profile, branch, and Git worktree before appending.
+  Do not register an attempted creation that failed.
+
 ## Rules for every profile
 
 - A profile is a West topdir with its own `.west` and
