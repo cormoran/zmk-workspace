@@ -7,15 +7,21 @@ description: Debug ZMK keyboard firmware on hardware with J-Link plus ZMK Studio
 
 ## Operating Model
 
-Use this skill for hardware-in-the-loop ZMK debugging. Always use `$build-zmk-config` for builds and rebuilds first. Then use the repository's Studio RPC documentation and helper tools to exercise firmware behavior, with J-Link/GDB attached when RPC, logs, stack evidence, or USB/BLE behavior indicate a fault.
+Use this skill for hardware-in-the-loop ZMK debugging. Use `$build-zmk-config` when the target repo has a matching ZMK config/build definition; for a standalone ZMK fixture, build with `west` and record the equivalent board, shield, config, and artifact paths. Then use the repository's Studio RPC documentation and helper tools to exercise firmware behavior, with J-Link/GDB attached when RPC, logs, stack evidence, or USB/BLE behavior indicate a fault.
 
 Prefer the least intrusive observation first:
 
-1. Build with `$build-zmk-config` and audit generated config, ELF, map, and logs.
+1. Build through the matching config workflow or `west`, then audit generated config, ELF, map, and logs.
 2. Flash and collect serial/RTT logs.
 3. Use Studio RPC to query device info, lock state, custom subsystem list, and target subsystem calls.
 4. If the firmware freezes or behaves suspiciously, halt with J-Link and inspect threads, stacks, registers, backtrace, and relevant symbols.
 5. Rebuild with temporary debug Kconfig only when runtime evidence is insufficient, and keep a near-release build for comparison.
+
+## Subagent Model Recommendation
+
+Delegate bounded J-Link work to `gpt-6-luna` when subagents are available and the user permits delegation. Use `medium` reasoning effort for an end-to-end preflight, build, flash, and verification task; use `low` for a narrowly specified readout or app-only flash when the probe/board mapping, image, address range, and success checks are already known. Give the worker the skill path, exact target/probe identity if known, hardware lock requirement, intended artifact, and required evidence; make one worker own the hardware at a time. Escalate uncertain board identification, damaged UICR/bootloader, protected SWD, or full-chip recovery planning to `gpt-6-sol` at `medium` before destructive writes.
+
+This recommendation is based on two 2026-09-23 XIAO trials: Luna at `low` completed a normal `0x27000` build, J-Link flash/readback, and USB verification; a second independent Luna `low` pass completed a read-only preflight from the revised skill. The first run initially stopped on an unrelated invalid lock-list entry and needed explicit guidance to lock only the probe while the XIAO had no USB identity. Thus `low` is proven for bounded hardware steps, while `medium` is the safer recommendation for the full workflow; the latter has not yet been measured here. OpenAI's [model selection guide](https://developers.openai.com/api/docs/guides/model-selection) also places Luna on scoped tasks and recommends comparing effort on representative work.
 
 ## Lock the Hardware First
 
@@ -31,9 +37,11 @@ SID=<your-session-id-or-worktree-name>   # same value on every call, whole sessi
 
 Lock the probe together with the `zmk-<serial>` of the board it is SWD-wired to (flash/halt/reset disturbs the board's USB side). If you don't yet know which serials form your unit, acquire everything (`acquire $(hw-lock list --names)`) and release the extras after identification. If `acquire` reports another live owner, retry with `--wait <sec>`, do non-hardware work, or report the contention — never touch the hardware without holding the lock.
 
+If the XIAO currently has **no USB identity** (for example, its application does not enumerate), lock its J-Link probe first and acquire the board's `zmk-<serial>` lock as soon as USB enumeration supplies one. Do not treat an unrelated `/dev/zmk-hp-zmk-input-*` node as the XIAO merely because `hw-lock list` includes it. On this rig, an input-only node can yield a synthetic serial containing `:` that `hw-lock acquire` rejects; this does not prevent locking the J-Link probe itself.
+
 ## Required Setup
 
-Invoke `$build-zmk-config` to produce a build directory and firmware artifacts. Keep the build log, `.config`, `build_info.yml`, `zephyr/zmk.elf`, `zephyr/zmk.map`, and generated UF2/HEX. If the repo provides a Nix devShell for west, run the build through that shell as described by `$build-zmk-config`.
+Invoke `$build-zmk-config` when the project has a matching config; otherwise use its documented `west` build workflow for the available fixture. Keep the build log, `.config`, `build_info.yml` when generated, `zephyr/zmk.elf`, `zephyr/zmk.map`, and generated UF2/HEX. If the repo provides a Nix devShell for west, use it.
 
 Check tools before interacting with hardware:
 
@@ -48,6 +56,16 @@ lsusb | grep -i 'SEGGER\|J-Link'
 Treat J-Link probe presence and SEGGER CLI availability as separate facts. A probe can appear in USB as `1366:* SEGGER J-Link` while `JLinkExe` and `JLinkGDBServerExe` are absent from PATH or unavailable inside the current container. In that case, report "probe visible, SEGGER tools unavailable" and either add the SEGGER tools to PATH/container or use an available libjaylink-based tool only if it supports the needed debugging workflow.
 
 For XIAO BLE / nRF52840 targets, the J-Link device is usually `nRF52840_xxAA`, interface `SWD`, speed `4000`. Confirm the MCU from `build_info.yml` before using these defaults.
+
+## XIAO nRF52840 Boot-Chain Preflight
+
+Before flashing or treating missing USB/RPC as an application bug, read [references/xiao-nrf52840-recovery.md](references/xiao-nrf52840-recovery.md). With the hardware lock held, identify the exact board and probe, confirm an nRF52840 Cortex-M4 and target voltage, then inspect the reset vectors, UICR bootloader address, application link address, and bootloader/SoftDevice presence. Preserve a flash/UICR backup before changing a suspect boot chain. The reference gives a decision table for a working factory-style chain, stale code at `0x0`, missing SoftDevice/MBR, damaged bootloader, wrong UICR, and access/connection failures.
+
+Before using USB absence as evidence that the boot chain is broken, check the flashed build's `.config`: `CONFIG_ZMK_USB=y` and the intended USB transport must be enabled if USB enumeration or Studio RPC over USB is expected. A correctly running ZMK image with `CONFIG_ZMK_USB` unset may have no USB identity.
+
+USB CDC enumeration alone does not prove Studio RPC is enabled. Before probing RPC, confirm `CONFIG_ZMK_STUDIO=y` and the appropriate Studio transport in the build config. If the running image's ELF/config is unavailable, record its provenance as unknown; vectors and USB descriptors can establish that code is running but cannot establish its Kconfig or expected RPC behavior.
+
+Prefer restoring only the damaged layer to the Seeed XIAO layout (`MBR + S140` below `0x27000`, application at `0x27000`, bootloader at `0xF4000`, bootloader settings near `0xFD800`, UICR pointing to `0xF4000`). Use the exact XIAO variant's Seeed combined HEX when restoring MBR/SoftDevice/bootloader; its `nosd` UF2 update does not repair a missing SoftDevice. Do not use a `code_partition`-at-`0x0` overlay as the routine fix for a broken boot chain: that bypasses the bootloader and leaves the next normal ZMK build broken. For a known working boot chain, flash only the application HEX at its verified partition address. Verify the target runs and enumerates after every recovery step before beginning firmware debugging.
 
 ## XIAO BLE DAP Power-Up Failure
 
