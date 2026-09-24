@@ -94,6 +94,27 @@ def projects(doc: dict) -> dict[str, dict]:
     return {p["name"]: p for p in doc["projects"]}
 
 
+def requirements_for(doc: dict) -> dict[str, dict]:
+    return {
+        name: {"url": p["url"], "revision": p["revision"], "path": p["path"]}
+        for name, p in projects(doc).items()
+    }
+
+
+def profile_manifest(doc: dict, zephyr_sha: str) -> dict:
+    output = {"manifest": {"group-filter": doc.get("group-filter", []), "projects": [], "self": {"path": "workspace-config"}}}
+    for project in doc["projects"]:
+        item = dict(project)
+        path = Path(item["path"])
+        if path.parts[0] != "dependencies":
+            raise ProfileError(f"unexpected dependency path: {path}")
+        item["path"] = str(Path(*path.parts[1:]))
+        if item["name"] == "zephyr":
+            item["revision"] = zephyr_sha
+        output["manifest"]["projects"].append(item)
+    return output
+
+
 def profile_name(zephyr_sha: str, zmk_branch: str) -> str:
     slug = re.sub(r"[^A-Za-z0-9._+-]+", "-", zmk_branch).strip(".-")
     if not slug:
@@ -135,10 +156,7 @@ def create(args: argparse.Namespace) -> None:
     if git(zephyr, "rev-parse", "HEAD") != zephyr_sha:
         raise ProfileError("source Zephyr HEAD differs from manifest-rev; update the source workspace first")
     name = profile_name(zephyr_sha, zmk_branch)
-    requirements = {
-        name: {"url": p["url"], "revision": p["revision"], "path": p["path"]}
-        for name, p in by_name.items()
-    }
+    requirements = requirements_for(doc)
     profile = WORKSPACES / name
     if profile.exists():
         existing = profile_data(profile)["requirements"]
@@ -151,16 +169,7 @@ def create(args: argparse.Namespace) -> None:
 
     # Keep the resolved dependency list stable. ZMK follows its named branch;
     # Zephyr stays at the commit used to name the profile.
-    output = {"manifest": {"group-filter": doc.get("group-filter", []), "projects": [], "self": {"path": "workspace-config"}}}
-    for project in doc["projects"]:
-        item = dict(project)
-        path = Path(item["path"])
-        if path.parts[0] != "dependencies":
-            raise ProfileError(f"unexpected dependency path: {path}")
-        item["path"] = str(Path(*path.parts[1:]))
-        if item["name"] == "zephyr":
-            item["revision"] = zephyr_sha
-        output["manifest"]["projects"].append(item)
+    output = profile_manifest(doc, zephyr_sha)
     metadata = {
         "format": 1,
         "zephyr_sha": zephyr_sha,
@@ -185,6 +194,28 @@ def create(args: argparse.Namespace) -> None:
         raise ProfileError("West did not select the new profile as its topdir")
     print(f"Created {profile}")
     run("west", "update", "--narrow", "--path-cache", str(deps), cwd=profile, capture=False)
+    # Imported projects can change when ZMK or another floating project moves
+    # from the seed checkout to the requested revision. Resolve again against
+    # the profile's new checkouts and install the resulting manifest.
+    for _ in range(3):
+        current = resolved(repo, manifest, profile)
+        current_requirements = requirements_for(current)
+        if current_requirements["zephyr"]["revision"] != zephyr_revision:
+            raise ProfileError(
+                "Zephyr revision changed after updating imported projects; "
+                "seed this profile from dependencies matching the target revision"
+            )
+        if current_requirements == requirements:
+            break
+        requirements = current_requirements
+        output = profile_manifest(current, zephyr_sha)
+        metadata["requirements"] = requirements
+        (config / "west.yml").write_text(yaml.safe_dump(output, sort_keys=False), encoding="utf-8")
+        (config / "profile.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+        run("west", "manifest", "--validate", cwd=profile)
+        run("west", "update", "--narrow", "--path-cache", str(deps), cwd=profile, capture=False)
+    else:
+        raise ProfileError("imported dependencies did not stabilize after three updates")
     # Keep only ZMK floating. Pin every other project to the commit that
     # was actually checked out, including projects declared as `main`.
     for item in output["manifest"]["projects"]:
@@ -264,7 +295,11 @@ def add_worktree(args: argparse.Namespace) -> None:
                 raise ProfileError(f"manifest not found at start revision: {manifest}")
             matches = []
             failures = []
-            for profile in sorted(WORKSPACES.glob("zephyr-*_zmk-*")):
+            candidates = (
+                [workspace_path(args.profile)] if args.profile
+                else sorted(WORKSPACES.glob("zephyr-*_zmk-*"))
+            )
+            for profile in candidates:
                 if not (profile / "workspace-config/profile.json").is_file():
                     continue
                 try:
@@ -313,6 +348,7 @@ def main() -> int:
     worktree_parser.add_argument("branch")
     worktree_parser.add_argument("--start")
     worktree_parser.add_argument("--manifest")
+    worktree_parser.add_argument("--profile", help="select a profile when several are compatible")
     worktree_parser.set_defaults(action=add_worktree)
     args = parser.parse_args()
     try:

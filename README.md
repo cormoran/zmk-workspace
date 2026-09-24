@@ -68,7 +68,8 @@ dependency declarations before placing the worktree. If no compatible profile
 exists, it stops without changing shared dependencies. To provision another
 profile, initialize one from a matching standalone module workspace.
 Run `python3 tools/shared_west.py --help` for `check`, `--start`, and
-`--manifest` options.
+`--manifest` options. When several profiles satisfy the same declarations,
+pass `--profile <profile-name>` to select the intended dependency baseline.
 
 From the new worktree, `west topdir` points at the shared profile. Use a
 separate build directory per worktree:
