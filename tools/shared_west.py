@@ -56,6 +56,25 @@ def git(path: Path, *args: str) -> str:
     return run("git", *args, cwd=path)
 
 
+def branch_remote(repo: Path) -> str:
+    remotes = set(git(repo, "remote").splitlines())
+    for remote in ("origin", "cormoran"):
+        if remote in remotes:
+            return remote
+    raise ProfileError("new worktree branches require an origin or cormoran remote")
+
+
+def refreshed_main(repo: Path) -> str:
+    remote = branch_remote(repo)
+    run("git", "fetch", remote, cwd=repo, capture=False)
+    baseline = f"{remote}/main"
+    try:
+        git(repo, "rev-parse", "--verify", f"refs/remotes/{baseline}")
+    except ProfileError as exc:
+        raise ProfileError(f"fetched remote does not provide {baseline}") from exc
+    return baseline
+
+
 def manifest_file(repo: Path, supplied: str | None) -> str:
     if supplied:
         candidate = supplied
@@ -312,13 +331,11 @@ def add_worktree(args: argparse.Namespace) -> None:
         cwd=repo,
         check=False,
     ).returncode == 0
-    if branch_exists and args.start:
-        raise ProfileError("--start is only valid when creating a new branch")
     if branch_exists:
         worktrees = run("git", "worktree", "list", "--porcelain", cwd=repo)
         if f"branch refs/heads/{branch}" in worktrees.splitlines():
             raise ProfileError(f"branch is already checked out in another worktree: {branch}")
-    start = branch if branch_exists else (args.start or "HEAD")
+    start = branch if branch_exists else refreshed_main(repo)
     WORKSPACES.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="shared-west-worktree-", dir=WORKSPACES) as staging:
         stage = Path(staging) / "checkout"
@@ -383,7 +400,6 @@ def main() -> int:
     worktree_parser = sub.add_parser("worktree", help="create a branch worktree in its compatible profile")
     worktree_parser.add_argument("repo")
     worktree_parser.add_argument("branch")
-    worktree_parser.add_argument("--start")
     worktree_parser.add_argument("--manifest")
     worktree_parser.add_argument("--profile", help="select a profile when several are compatible")
     worktree_parser.add_argument("--task", required=True, help="short task or issue description for the worktree log")

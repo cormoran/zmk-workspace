@@ -11,6 +11,21 @@ profiles and their worktrees live in `ws/<profile>`. The whole `ws/` tree is
 local and ignored by Git. Never add profile manifests or build results to this
 repository.
 
+## Refresh the branch baseline before creating a worktree
+
+For every new worktree branch, work from the source repository under
+`projects/<repo>`. Run `git fetch origin` when that remote exists; otherwise,
+run `git fetch cormoran`. Create the branch from the fetched `origin/main` or
+`cormoran/main` respectively. Do not branch from local `main`, `HEAD`, another
+remote, or an arbitrary commit. The shared-worktree helper performs this
+fetch-and-baseline selection for its `worktree` command; omit `--start`.
+
+Install the repository hook before allowing direct `git worktree add -b` or
+`git switch -c` use: `python3 tools/install_worktree_baseline_hook.py
+projects/<repo>`. It rejects a new local branch unless its tip equals the
+selected remote's `main`. Git has no hook before `worktree add`, so the hook
+validates the branch ref while the helper supplies the required fetch.
+
 ## Record why each resource was created
 
 - Give every `shared_west.py init` and `shared_west.py worktree` call a

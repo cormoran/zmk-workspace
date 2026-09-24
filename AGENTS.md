@@ -14,6 +14,15 @@
 
 ## zmk-workspace worktrees
 
+Before creating a new worktree branch, fetch GitHub changes from the source
+repository's `origin` remote, or its `cormoran` remote when `origin` is not
+available. Create the branch from the fetched `origin/main` or
+`cormoran/main`; do not use a local `main`, `HEAD`, or another commit as its
+baseline.
+Install the baseline hook in each source repository before using direct Git
+worktree commands: `python3 tools/install_worktree_baseline_hook.py
+projects/<repo>`.
+
 When creating a Git worktree of this `zmk-workspace` repository, share the
 main checkout's ignored `projects/` and `ws/` directories rather than creating
 per-worktree copies. Codex runs

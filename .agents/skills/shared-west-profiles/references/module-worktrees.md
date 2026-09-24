@@ -17,11 +17,12 @@ checkouts and places compatible Git worktrees under them.
    or `check <profile> <repo>` to inspect one. The helper compares every active
    project's URL, declared revision, and path, then checks installed HEADs.
 3. Place a branch with `python3 tools/shared_west.py worktree <repo> <branch>
-   --profile <profile> --task '<task>' [--start REF]`. The helper stages the
-   checkout, checks it against the selected profile, then moves it to
-   `ws/<profile>/wt-<repo>/<branch>`. `--start` is for a new branch; an existing
-   branch must not already be checked out elsewhere. If several profiles
-   match, select the intended baseline with `--profile`.
+   --profile <profile> --task '<task>'`. The helper fetches `origin` (or
+   `cormoran` when `origin` is absent), creates a new branch from that remote's
+   `main`, stages the checkout, checks it against the selected profile, then
+   moves it to `ws/<profile>/wt-<repo>/<branch>`. An existing branch must not
+   already be checked out elsewhere. If several profiles match, select the
+   intended baseline with `--profile`.
 4. From the resulting worktree, confirm `west topdir` names the selected
    profile and `west list zmk -f '{abspath}'` names its `zmk/`. Build with a
    worktree-local directory, for example:
@@ -52,9 +53,9 @@ after editing the manifest, so a build there does not test the new dependency.
    <complete-test-manifest> --task '<task>'`. The tool gives a dependency suffix
    if the same Zephyr/ZMK pair needs a different dependency set. Validate the
    new profile.
-4. Prefer a successor branch with `python3 tools/shared_west.py worktree
-   <repo> <successor-branch> --start <commit> --profile <new-profile>
-   --task '<task>'`. Check
+4. After the manifest change reaches the selected remote's `main`, create a
+   successor branch with `python3 tools/shared_west.py worktree <repo>
+   <successor-branch> --profile <new-profile> --task '<task>'`. Check
    `west topdir` and build in that worktree. To retain the old branch name,
    first commit and remove its old worktree; a Git branch cannot be checked
    out in two worktrees. Remove the temporary seed checkout after provisioning.

@@ -75,8 +75,10 @@ the source checkout. Use the printed profile path in the next step.
 #### Create and build the worktree
 
 Create the branch worktree in the selected or newly created profile, and build
-from the resulting path. `worktree` checks the selected profile again. All
-development builds belong in `ws/<profile>/wt-<repo>/<branch>`.
+from the resulting path. `worktree` fetches `origin`, or `cormoran` when
+`origin` is unavailable, then creates the new branch from that remote's
+`main`. It checks the selected profile again. All development builds belong in
+`ws/<profile>/wt-<repo>/<branch>`.
 
 ```bash
 python3 tools/shared_west.py worktree <repo> <branch> --profile <profile> \
@@ -107,12 +109,13 @@ python3 tools/shared_west.py init <seed-checkout> \
   --manifest <complete-test-manifest> --task '<task or issue>'
 ```
 
-The command prints the new profile path. Create a successor branch from the
-manifest-change commit in that profile, then build there:
+The command prints the new profile path. After the manifest change reaches the
+selected remote's `main`, create a successor branch in that profile, then
+build there:
 
 ```bash
 python3 tools/shared_west.py worktree <repo> <successor-branch> \
-  --start <manifest-change-commit> --profile <new-profile> \
+  --profile <new-profile> \
   --task '<task or issue>'
 cd ws/<new-profile>/wt-<repo>/<successor-branch>
 west zmk-build tests/zmk-config -m . -d ./build -q
@@ -129,8 +132,8 @@ ignored `ws/`. For a worktree placed manually, use
 `python3 tools/record_shared_west_history.py worktree --help` to register it
 after validation.
 
-Use `python3 tools/shared_west.py --help` for `--start`, `--manifest`, and
-`--profile`. For the profile design and its constraints, see
+Use `python3 tools/shared_west.py --help` for `--manifest` and `--profile`.
+For the profile design and its constraints, see
 [shared West profile experiment](docs/shared-west-experiment.md).
 
 ## Hardware
