@@ -13,9 +13,8 @@ West extension.
 ## Directory structure
 
 ```text
-projects/                         Standalone source checkouts used to initialize profiles
+projects/                         Source checkouts used to initialize profiles
 └── <repo>/
-    ├── .west/ and dependencies/       Initial standalone West workspace
     └── …                               Source repository
 
 ws/                               Shared West profiles
@@ -25,9 +24,9 @@ ws/                               Shared West profiles
     └── wt-<repo>/<branch>/             Feature-branch Git worktrees
 ```
 
-Use `projects/<repo>` to clone a module and initialize its standalone West
-workspace. It is the source used to create a profile, and it remains available
-for standalone development. `projects/` is ignored by this repository.
+Use `projects/<repo>` to clone a module. It is the source used to create a
+profile when a new dependency set is needed. `projects/` is ignored by this
+repository.
 
 Use `ws/<profile>` for shared-profile development. A profile owns one set of
 West dependency checkouts. Create each feature branch in
@@ -51,56 +50,41 @@ from that shell.
 
 ### Start a module
 
-Clone a module under `projects/` and initialize its standalone dependency tree.
-The manifest filename belongs to the module; this example uses
-[zmk-module-template](https://github.com/cormoran/zmk-module-template).
+Clone the module under `projects/`, then select a compatible shared profile.
+Use `check` before creating a worktree to confirm the profile you intend to
+use.
 
 ```bash
-git clone https://github.com/cormoran/zmk-module-template.git projects/zmk-module-template
-cd projects/zmk-module-template
-west init -l west --mf west-test-isolated.yml
-west update --narrow
-west zephyr-export
-cd ../..
+git clone <module-url> projects/<repo>
+python3 tools/shared_west.py check <profile> <repo>
 ```
 
-Follow the selected project's README for its manifest and standalone build
-commands. Config repositories can remain standalone when a shared profile is
-not needed.
-
-### Create and use a shared profile
-
-Create a profile once from an initialized module. The command records the
-module's compatible dependency set in `ws/`.
+Create the branch worktree in that profile, and build from the resulting path.
+All development builds belong in `ws/<profile>/wt-<repo>/<branch>`.
 
 ```bash
-python3 tools/shared_west.py init zmk-module-template
-```
-
-Create a feature worktree. The command finds a compatible profile, verifies the
-module's active dependencies, and prints the worktree path.
-
-```bash
-python3 tools/shared_west.py worktree zmk-module-template my-feature
-cd ws/<profile>/wt-zmk-module-template/my-feature
+python3 tools/shared_west.py worktree <repo> <branch> --profile <profile>
+cd ws/<profile>/wt-<repo>/<branch>
 west zmk-build tests/zmk-config -m . -d ./build -q
 ```
 
-Use a separate `build/` directory in every worktree. To inspect a specific
-profile before creating a branch, run:
+Use a separate `build/` directory in every worktree. The module's README
+defines its own build target when it differs from `tests/zmk-config`.
+
+### Create a shared profile
+
+If no existing profile is compatible, initialize the source repository's
+standalone dependencies according to that module's README. Then create a
+profile from `projects/<repo>`:
 
 ```bash
-python3 tools/shared_west.py check <profile> zmk-module-template
+python3 tools/shared_west.py init <repo>
 ```
 
-Only run dependency updates from the profile directory. After updating, check
-the affected modules and rebuild their worktrees:
-
-```bash
-cd ws/<profile>
-west update zmk
-python3 ../../tools/shared_west.py check <profile> zmk-module-template
-```
+This creates the shared dependencies under `ws/<profile>`; create a worktree
+with the preceding commands before building. Only run dependency updates from
+the profile directory. After updating, check the affected modules and rebuild
+their worktrees.
 
 Use `python3 tools/shared_west.py --help` for `--start`, `--manifest`, and
 `--profile`. For the profile design and its constraints, see
