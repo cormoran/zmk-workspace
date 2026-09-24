@@ -44,6 +44,43 @@
 
 To re-initialize with other zmk-config, module, `rm -r .west` and do step3 again.
 
+## Shared West profiles for module worktrees
+
+For modules with a standalone West workspace and downloaded `dependencies/`,
+`tools/shared_west.py` creates a shared profile. Its name contains the checked
+out Zephyr commit and the **ZMK branch name**. ZMK can advance when the profile
+is explicitly updated; the other dependencies are pinned to the commits
+installed when the profile is created.
+
+```bash
+python3 tools/shared_west.py init zmk-behavior-runtime-sensor-rotate
+python3 tools/shared_west.py worktree zmk-behavior-runtime-sensor-rotate my-feature
+```
+
+The second command places a new or existing `my-feature` branch under
+`<profile>/zmk-behavior-runtime-sensor-rotate/my-feature`. An existing branch
+must not already be checked out elsewhere. The command checks all active
+dependency declarations before placing the worktree. If no compatible profile
+exists, it stops without changing shared dependencies. To provision another
+profile, initialize one from a matching standalone module workspace.
+Run `python3 tools/shared_west.py --help` for `check`, `--start`, and
+`--manifest` options.
+
+From the new worktree, `west topdir` points at the shared profile. Use a
+separate build directory per worktree:
+
+```bash
+west zmk-build tests/zmk-config -m . -d ./build -q
+```
+
+Only update shared dependencies from the profile directory. For example,
+`west update zmk` advances its ZMK branch; then run `shared_west.py check` and
+the affected modules' build tests before continuing work. Each module keeps
+its standalone manifest, so a checkout outside a shared profile can still be
+initialized on its own. The generated profile's `workspace-config/west.yml`
+records the dependency commits. Trial details are in
+[`docs/shared-west-experiment.md`](docs/shared-west-experiment.md).
+
 ## Hardware
 
 Some modules/features in this workspace are validated on real hardware
