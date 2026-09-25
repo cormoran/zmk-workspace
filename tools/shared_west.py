@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import configparser
-import copy
 import hashlib
 import json
 import re
@@ -253,64 +252,6 @@ def create(args: argparse.Namespace) -> None:
     print(f"Task history: {history}")
 
 
-def fork_pinned(args: argparse.Namespace) -> None:
-    """Make an isolated, commit-pinned consumer profile from a checked baseline."""
-    base = workspace_path(args.base_profile)
-    repo = repository_path(args.repo)
-    manifest = manifest_file(repo, args.manifest)
-    check(base, repo, manifest)
-    baseline = profile_data(base)
-    if args.project not in baseline["requirements"]:
-        raise ProfileError(f"project is not in the baseline: {args.project}")
-    if not re.fullmatch(r"[0-9a-f]{40}", args.revision):
-        raise ProfileError("revision must be a full 40-character commit SHA")
-    source = PROJECTS / args.project
-    if not source.is_dir() or git(source, "cat-file", "-t", args.revision) != "commit":
-        raise ProfileError(f"commit is not available in {source}: {args.revision}")
-    original = baseline["requirements"][args.project]["revision"]
-    if original == args.revision:
-        raise ProfileError("the baseline already requires this revision")
-    suffix = hashlib.sha256(f"{args.project}:{args.revision}".encode()).hexdigest()[:8]
-    profile = WORKSPACES / f"{base.name}_pin-{suffix}"
-    if profile.exists():
-        raise ProfileError(f"profile already exists: {profile}")
-    document = yaml.safe_load((base / "workspace-config/west.yml").read_text(encoding="utf-8"))
-    entries = [p for p in document["manifest"]["projects"] if p["name"] == args.project]
-    if len(entries) != 1:
-        raise ProfileError(f"expected one manifest entry for {args.project}")
-    entries[0]["revision"] = args.revision
-    # Freeze the ZMK checkout too: this integration profile represents one
-    # exact dependency set, even when the source profile follows a branch.
-    zmk = next(p for p in document["manifest"]["projects"] if p["name"] == "zmk")
-    if not re.fullmatch(r"[0-9a-f]{40}", zmk["revision"]):
-        zmk["revision"] = git(base / zmk["path"], "rev-parse", "HEAD")
-    metadata = copy.deepcopy(baseline)
-    metadata["requirements"][args.project]["revision"] = args.revision
-    metadata["pinned_overrides"] = {args.project: original}
-    metadata["source_profile"] = base.name
-    config = profile / "workspace-config"
-    config.mkdir(parents=True)
-    (config / "west.yml").write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
-    (config / "profile.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
-    (profile / ".west").mkdir()
-    (profile / ".west/config").write_text(
-        "[manifest]\npath = workspace-config\nfile = west.yml\n\n[zephyr]\nbase = zephyr\n",
-        encoding="utf-8",
-    )
-    run("west", "manifest", "--validate", cwd=profile)
-    if Path(run("west", "topdir", cwd=profile)) != profile:
-        raise ProfileError("West did not select the new profile as its topdir")
-    run("west", "update", "--narrow", "--path-cache", str(base), cwd=profile, capture=False)
-    check(profile, repo, manifest, allow_pinned_overrides=True)
-    try:
-        history = record_profile(profile, repo, args.task)
-    except (ValueError, OSError, subprocess.CalledProcessError) as exc:
-        raise ProfileError(f"profile created, but history registration failed: {exc}") from exc
-    print(f"Created {profile}")
-    print(f"Pinned {args.project} at {args.revision}")
-    print(f"Task history: {history}")
-
-
 def check(profile: Path, repo: Path, manifest: str, *, allow_pinned_overrides: bool = False) -> None:
     data = profile_data(profile)
     doc = resolved(repo, manifest, profile)
@@ -380,7 +321,7 @@ def matching_profiles(repo: Path, manifest: str, candidates: list[Path], *, allo
 
 
 def check_overlay(profile: Path, consumer: Path, manifest: str, module: Path) -> str:
-    """Validate an editable module against the consumer's unchanged baseline."""
+    """Validate an alternate module worktree against the consumer baseline."""
     check(profile, consumer, manifest)
     name = module.name
     requirement = profile_data(profile)["requirements"].get(name)
@@ -533,14 +474,6 @@ def main() -> int:
     create_parser.add_argument("--manifest")
     create_parser.add_argument("--task", required=True, help="short task or issue description for the profile log")
     create_parser.set_defaults(action=create)
-    fork_parser = sub.add_parser("fork-pinned", help="create an isolated profile with one dependency pinned to a commit")
-    fork_parser.add_argument("base_profile")
-    fork_parser.add_argument("repo")
-    fork_parser.add_argument("project")
-    fork_parser.add_argument("revision")
-    fork_parser.add_argument("--manifest")
-    fork_parser.add_argument("--task", required=True)
-    fork_parser.set_defaults(action=fork_pinned)
     check_parser = sub.add_parser("check", help="check a module against a profile")
     check_parser.add_argument("profile")
     check_parser.add_argument("repo")
@@ -561,7 +494,7 @@ def main() -> int:
     worktree_parser.add_argument("--consumer-manifest", help="complete consumer manifest for --overlay-for")
     worktree_parser.add_argument("--task", required=True, help="short task or issue description for the worktree log")
     worktree_parser.set_defaults(action=add_worktree)
-    overlay_parser = sub.add_parser("overlay-modules", help="print a ZEPHYR_MODULES CMake argument for an editable module")
+    overlay_parser = sub.add_parser("overlay-modules", help="print a ZEPHYR_MODULES CMake argument for a module worktree")
     overlay_parser.add_argument("profile")
     overlay_parser.add_argument("consumer")
     overlay_parser.add_argument("project")

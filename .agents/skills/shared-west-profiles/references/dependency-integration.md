@@ -1,46 +1,9 @@
 # Building a consumer with a different module dependency
 
-## Pinned remote feature revision
-
-For a committed feature revision available from the module's remote, keep
-the consumer's declared manifest intact. Resolve its complete standalone
-manifest (for DYA2, `config/west-standalone.yml`, which imports
-`west-dependency.yml`). Check an existing profile against all active
-requirements and installed HEADs; if none matches, use `shared_west.py init`
-with that complete manifest and the consumer's initialized standalone
-dependencies to create a baseline first. Fetch the module's remote branch in
-`projects/<module>` and verify its exact commit. Then create a separate
-profile whose West manifest pins that one project to
-the commit. `tools/shared_west.py fork-pinned` does this, pins ZMK to the
-baseline's installed commit, updates dependencies only in the new profile,
-and validates the result:
-
-```bash
-python3 tools/shared_west.py fork-pinned <base-profile> <consumer> \
-  <module-project> <full-commit-sha> --manifest config/west-standalone.yml \
-  --task '<task>'
-python3 tools/shared_west.py worktree <consumer> <new-branch> \
-  --manifest config/west-standalone.yml --profile <new-profile> \
-  --allow-pinned-overrides --task '<task>'
-```
-
-Run both from the workspace root in the Nix devShell. The worktree command
-fetches the consumer's `origin/main` (or `cormoran/main`) before creating a
-new branch. The override flag is valid only for this dedicated profile and
-its named, pinned project. Ordinary `find` and `check` do not silently accept
-the profile as compatible with the consumer's floating revision. Use
-`check --allow-pinned-overrides` with the explicit profile when rechecking.
-
-Before building, verify `west topdir`, `west list <module-project> -f
-'{abspath} {revision}'`, the module checkout's HEAD and `manifest-rev`, and
-the configured Zephyr module paths (for example `zephyr_modules.txt` in the
-target's build directory). All must select the new profile's module exactly once.
-Build in the consumer worktree's own directory and record the profile,
-consumer and module HEADs and dirty states, target, and UF2 path under
-`docs/local/`. Never alter the existing profile or use `ZMK_EXTRA_MODULES` to
-replace a manifest project. A consumer that contains `zephyr/module.yml` may
-need `west zmk-build -m .` to expose its board and shield; this adds the
-consumer, not another copy of the pinned dependency.
+Use one compatible consumer profile for both local edits and a committed
+feature revision of a Zephyr module. Select the module worktree explicitly
+for the build. The consumer's manifest and the profile's installed dependency
+checkouts stay at their declared baseline.
 
 ## Editable local dependency
 
@@ -113,3 +76,33 @@ different compatible profile. Run dependency updates only from the profile
 topdir, then recheck and rebuild affected worktrees. A module that is not a
 Zephyr module, or whose repository URL differs from the consumer declaration,
 cannot use this overlay workflow.
+
+## Fixed remote feature revision
+
+Use the same profile and overlay commands above for a committed module
+revision. Fetch the feature branch into `projects/<module>` and verify the full
+commit SHA exists there before creating the module worktree:
+
+```bash
+git -C projects/<module> fetch origin <feature-branch>
+git -C projects/<module> cat-file -t <full-commit-sha>
+```
+
+Use `cormoran` when `origin` is absent. `cat-file` must print `commit`.
+Create the module worktree with `--overlay-for` as shown above; a new branch
+starts from the freshly fetched `origin/main` (or `cormoran/main`). On that
+new, clean branch, move HEAD to the requested feature commit and verify it:
+
+```bash
+git -C ws/<profile>/wt-<module>/<module-branch> reset --hard <full-commit-sha>
+git -C ws/<profile>/wt-<module>/<module-branch> rev-parse HEAD
+```
+
+Only run `reset --hard` on the new, clean module worktree. An existing branch
+already at the desired commit can be placed with the same `worktree` command
+without resetting it. Run `overlay-modules` again immediately before each
+build, inspect `zephyr_modules.txt`, and record the module HEAD with the build
+result. The profile's `west list <module>` continues to name its installed
+checkout; it does not indicate which module CMake compiled. If the feature
+commit changes the module's own build dependencies, verify those requirements
+separately and use a compatible profile for its standalone tests.

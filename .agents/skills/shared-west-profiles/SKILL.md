@@ -63,6 +63,11 @@ fetch-and-baseline selection for its `worktree` command; omit `--start`.
   `shared_west.py overlay-modules` to select the edited module for each build.
   The installed West project remains at its original path. Verify the generated
   Zephyr module list selects the worktree exactly once.
+- Use that same overlay workflow for a committed feature revision of a Zephyr
+  module. Check out the exact commit in the module worktree and verify its HEAD
+  before building. Do not create a profile for each module commit. Create a
+  profile only when the consumer's complete active dependency requirements or
+  the required Zephyr/ZMK baseline actually differ.
 
 ## Choose the relevant guide
 
@@ -72,10 +77,8 @@ fetch-and-baseline selection for its `worktree` command; omit `--start`.
 - For building consumer firmware with local changes to a Zephyr module
   dependency (and possibly temporary consumer changes), read
   [references/dependency-integration.md](references/dependency-integration.md).
-- For building a consumer against a fixed commit from a dependency feature
-  branch, read the pinned-revision section of that guide. This uses an
-  isolated profile and an explicit compatibility-check exception; it does
-  not place an editable dependency worktree at West's project path.
+- For building a consumer against a fixed commit from a Zephyr module feature
+  branch, read the fixed-revision section of that guide.
 - For changes to ZMK itself, ZMK's own tests, or building another module
   against modified ZMK, read
   [references/zmk-development.md](references/zmk-development.md). The current

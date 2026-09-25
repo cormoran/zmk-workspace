@@ -18,9 +18,10 @@ before setup. Place a project worktree in a compatible profile with
 `tools/shared_west.py`; the profile is the West topdir and the worktree owns
 its build directory. Read `references/west-layouts.md` for config manifests
 and the standalone fallback outside a supported shared profile.
-For firmware with edits to a module already declared in the config's West
-manifest, follow `$shared-west-profiles`' editable dependency guide and pass
-its `overlay-modules` argument to CMake. A normal `zmk-build` from a consumer
+For firmware with local edits or a fixed feature commit of a Zephyr module
+already declared in the config's West manifest, follow
+`$shared-west-profiles`' dependency integration guide and pass its
+`overlay-modules` argument to CMake. A normal `zmk-build` from a consumer
 worktree uses the profile's installed module checkout.
 
 ## Initialize

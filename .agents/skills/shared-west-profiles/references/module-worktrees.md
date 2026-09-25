@@ -69,8 +69,9 @@ re-resolves imports after updating ZMK and rejects a changed Zephyr revision.
 
 Each profile's `workspace-config/west.yml` is the sole manifest for updating
 its dependencies. In ordinary profiles ZMK follows the declared branch; other
-projects are pinned to installed commits after profile creation. Pinned
-integration profiles freeze ZMK too. An existing standalone checkout
+projects are pinned to installed commits after profile creation. Existing
+legacy pinned integration profiles also freeze ZMK; do not create another
+profile for each Zephyr module feature commit. An existing standalone checkout
 with its own `.west` keeps that workspace; a new worktree without `.west`
 uses the profile's configuration. Leave any ancestor `/home/ubuntu/.west`
 alone: the helper writes the profile's local `.west/config` directly because
