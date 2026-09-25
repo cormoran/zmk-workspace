@@ -57,14 +57,20 @@ fetch-and-baseline selection for its `worktree` command; omit `--start`.
 - Use a separate build directory for each worktree. Before building, verify
   `west topdir` and the ZMK path selected by West. A floating revision such as
   `main` describes a branch policy; only a build tests the installed commit.
+- For consumer firmware built with edits to a Zephyr module dependency, keep
+  the Zephyr and ZMK baseline in a compatible shared profile. Put both the
+  consumer and edited module worktrees under that profile and use
+  `shared_west.py overlay-modules` to select the edited module for each build.
+  The installed West project remains at its original path. Verify the generated
+  Zephyr module list selects the worktree exactly once.
 
 ## Choose the relevant guide
 
 - For ordinary module branches, profile creation, compatibility checks,
   dependency changes, and integration-only modules, read
   [references/module-worktrees.md](references/module-worktrees.md).
-- For building a consumer firmware with local changes to one of its West
-  dependencies (and possibly temporary consumer changes), read
+- For building consumer firmware with local changes to a Zephyr module
+  dependency (and possibly temporary consumer changes), read
   [references/dependency-integration.md](references/dependency-integration.md).
 - For building a consumer against a fixed commit from a dependency feature
   branch, read the pinned-revision section of that guide. This uses an

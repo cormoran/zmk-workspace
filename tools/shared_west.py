@@ -379,6 +379,59 @@ def matching_profiles(repo: Path, manifest: str, candidates: list[Path], *, allo
     return matches, failures
 
 
+def check_overlay(profile: Path, consumer: Path, manifest: str, module: Path) -> str:
+    """Validate an editable module against the consumer's unchanged baseline."""
+    check(profile, consumer, manifest)
+    name = module.name
+    requirement = profile_data(profile)["requirements"].get(name)
+    if requirement is None:
+        raise ProfileError(f"module is not a consumer dependency: {name}")
+    installed = profile / Path(requirement["path"]).relative_to("dependencies")
+    if installed.resolve() != Path(run("west", "list", name, "-f", "{abspath}", cwd=profile)):
+        raise ProfileError(f"West selects a different project path for {name}")
+    remote = branch_remote(module)
+    source_url = git(module, "remote", "get-url", remote).removesuffix(".git")
+    if source_url != requirement["url"].removesuffix(".git"):
+        raise ProfileError(f"module remote differs from consumer manifest: {name}")
+    return name
+
+
+def overlay_modules(args: argparse.Namespace) -> None:
+    profile = workspace_path(args.profile)
+    consumer = repository_path(args.consumer)
+    if Path(args.project).name != args.project or args.project in (".", ".."):
+        raise ProfileError("project must be a source repository name")
+    if Path(args.branch).is_absolute() or ".." in Path(args.branch).parts:
+        raise ProfileError("branch must be a safe relative path")
+    run("git", "check-ref-format", "--branch", args.branch, cwd=PROJECTS / args.project)
+    module = (profile / f"wt-{args.project}" / args.branch).resolve()
+    if not module.is_dir():
+        raise ProfileError(f"module worktree not found: {module}")
+    name = check_overlay(profile, consumer, manifest_file(consumer, args.consumer_manifest),
+                         PROJECTS / args.project)
+    if module != (profile / f"wt-{name}" / args.branch).resolve():
+        raise ProfileError("module must be a branch worktree in the selected profile")
+    if git(module, "branch", "--show-current") != args.branch:
+        raise ProfileError(f"module worktree is not on branch {args.branch}")
+    if (module / git(module, "rev-parse", "--git-common-dir")).resolve() != \
+            (PROJECTS / name / git(PROJECTS / name, "rev-parse", "--git-common-dir")).resolve():
+        raise ProfileError("module worktree belongs to a different repository")
+    doc = yaml.safe_load(run("west", "manifest", "--resolve", "--active-only", cwd=profile))["manifest"]
+    paths = []
+    replaced = 0
+    for project in doc["projects"]:
+        path = profile / project.get("path", project["name"])
+        if project["name"] == name:
+            path = module
+            replaced += 1
+        if (path / "zephyr/module.yml").is_file() or (path / "zephyr/CMakeLists.txt").is_file():
+            paths.append(str(path))
+    if replaced != 1 or not ((module / "zephyr/module.yml").is_file() or
+                             (module / "zephyr/CMakeLists.txt").is_file()):
+        raise ProfileError(f"expected one Zephyr module project for {name}")
+    print("-DZEPHYR_MODULES=" + ";".join(paths))
+
+
 def find(args: argparse.Namespace) -> None:
     repo = repository_path(args.repo)
     manifest = manifest_file(repo, args.manifest)
@@ -394,13 +447,19 @@ def find(args: argparse.Namespace) -> None:
 
 def add_worktree(args: argparse.Namespace) -> None:
     repo = repository_path(args.repo)
+    overlay_consumer = repository_path(args.overlay_for) if args.overlay_for else None
+    if overlay_consumer and not args.profile:
+        raise ProfileError("--overlay-for requires an explicit --profile")
+    if overlay_consumer and args.allow_pinned_overrides:
+        raise ProfileError("--overlay-for cannot use pinned overrides")
     if args.allow_pinned_overrides and not args.profile:
         raise ProfileError("--allow-pinned-overrides requires an explicit --profile")
     branch = args.branch
     if not branch or Path(branch).is_absolute() or ".." in Path(branch).parts:
         raise ProfileError("branch must be a safe relative path")
     run("git", "check-ref-format", "--branch", branch, cwd=repo)
-    manifest = manifest_file(repo, args.manifest)
+    manifest = manifest_file(overlay_consumer or repo,
+                             args.consumer_manifest if overlay_consumer else args.manifest)
     branch_exists = subprocess.run(
         ["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
         cwd=repo,
@@ -416,15 +475,24 @@ def add_worktree(args: argparse.Namespace) -> None:
         stage = Path(staging) / "checkout"
         run("git", "worktree", "add", "--detach", str(stage), start, cwd=repo, capture=False)
         try:
-            if not (stage / manifest).is_file():
+            if not overlay_consumer and not (stage / manifest).is_file():
                 raise ProfileError(f"manifest not found at start revision: {manifest}")
             candidates = (
                 [workspace_path(args.profile)] if args.profile
                 else sorted(WORKSPACES.glob("zephyr-*_zmk-*"))
             )
-            matches, failures = matching_profiles(
-                stage, manifest, candidates, allow_pinned_overrides=args.allow_pinned_overrides
-            )
+            if overlay_consumer:
+                matches, failures = [], []
+                for candidate in candidates:
+                    try:
+                        check_overlay(candidate, overlay_consumer, manifest, repo)
+                        matches.append(candidate)
+                    except ProfileError as exc:
+                        failures.append(f"{candidate.name}: {exc}")
+            else:
+                matches, failures = matching_profiles(
+                    stage, manifest, candidates, allow_pinned_overrides=args.allow_pinned_overrides
+                )
             if len(matches) != 1:
                 detail = "\n".join(failures)
                 raise ProfileError(f"expected one compatible profile, found {len(matches)}\n{detail}")
@@ -489,8 +557,17 @@ def main() -> int:
     worktree_parser.add_argument("--manifest")
     worktree_parser.add_argument("--profile", help="select a profile when several are compatible")
     worktree_parser.add_argument("--allow-pinned-overrides", action="store_true")
+    worktree_parser.add_argument("--overlay-for", help="consumer repository for an editable module worktree")
+    worktree_parser.add_argument("--consumer-manifest", help="complete consumer manifest for --overlay-for")
     worktree_parser.add_argument("--task", required=True, help="short task or issue description for the worktree log")
     worktree_parser.set_defaults(action=add_worktree)
+    overlay_parser = sub.add_parser("overlay-modules", help="print a ZEPHYR_MODULES CMake argument for an editable module")
+    overlay_parser.add_argument("profile")
+    overlay_parser.add_argument("consumer")
+    overlay_parser.add_argument("project")
+    overlay_parser.add_argument("branch")
+    overlay_parser.add_argument("--consumer-manifest")
+    overlay_parser.set_defaults(action=overlay_modules)
     args = parser.parse_args()
     try:
         args.action(args)
