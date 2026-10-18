@@ -8,14 +8,14 @@ privately alongside the actual host, not here.
 
 ## Physical hardware
 
-- 2x [Seeed XIAO nRF52840 (Sense)](https://wiki.seeedstudio.com/XIAO_BLE/)
-  boards used as generic test boards for whichever module/feature is being
-  worked on. One of them additionally has a PMW3610 optical sensor wired to
-  it for trackball/sensor driver work (see [pmw3610.md](pmw3610.md)).
-- 2x SEGGER J-Link probes, each with its SWD lines wired to one of the two
-  XIAO boards (SWDIO/SWCLK/GND — no reset line needed, `AIRCR.SYSRESETREQ`
-  via `JLinkExe`'s `r` command is used instead). Having two independent
-  probes is what makes it possible to flash and observe two boards at once
+- 2x XIAO nRF52840 Plus boards used as generic test boards for whichever
+  module/feature is being worked on. One of them additionally has a PMW3610
+  optical sensor wired to it for trackball/sensor driver work (see
+  [pmw3610.md](pmw3610.md)).
+- 2x nRF54L15 DK boards used as SEGGER J-Link OB probes. Each DK's external
+  debug port connects to one XIAO board (SWDIO/SWCLK/GND — no reset line
+  needed, `AIRCR.SYSRESETREQ` via `JLinkExe`'s `r` command is used instead).
+  Having two independent probes makes it possible to flash and observe two boards at once
   (e.g. to validate a ZMK split keyboard's central + peripheral roles
   pairing with each other — see
   [`.agents/skills/debug-zmk-split`](../.agents/skills/debug-zmk-split/SKILL.md)).
@@ -108,9 +108,19 @@ than re-debugging from scratch:
 - When reusing a full debug-probe development board (rather than a
   standalone probe) as one of the two J-Links, double check its SWD lines
   are actually routed to the *external* target and not left connected to its
-  own onboard chip — `JLinkExe`'s core-identification warning
-  (`Identified core does not match configuration`) catches this before you
-  waste time on a failing flash attempt.
+  own onboard chip. On the current rig, `ShowEmuList` reports
+  `J-Link OB-nRF5340-NordicSemi` for both probes even though the DKs are
+  nRF54L15 models. This USB product name does not identify the SWD target.
+  Select each probe by serial, connect with `device nRF52840_xxAA`, and read
+  CPUID at `0xE000ED00` and FICR PART at `0x10000100`. The expected values
+  are `0x410FC241` (Cortex-M4) and `0x00052840` (nRF52840).
+- In the 2026-10-18 check, one probe reached its external nRF52840 and its
+  GDB server connected. The other saw `VTref=3.300V` and SW-DP ID
+  `0x2BA01477` but repeatedly failed with `Failed to power up DAP`, including
+  after an automatic J-Link OB firmware update. With the XIAO powered over
+  USB, power-cycle that DK/J-Link and retry before investigating SWD wiring.
+  Two-board simultaneous debugging remains unverified until both probes can
+  connect. Keep session-specific serial numbers and logs under `docs/local/`.
 
 For the full agent-oriented workflows (build, flash, Studio RPC, GDB/RTT,
 two-board split debugging), see the

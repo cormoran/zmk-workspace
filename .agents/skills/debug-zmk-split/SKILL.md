@@ -29,7 +29,7 @@ Heartbeat with `hw-lock touch --owner "$SID" ...` at the start of each batch of 
 
 ## Required Setup
 
-Two SEGGER J-Links, each SWD-wired to its own XIAO-class board, both attached to the same host/container. Confirm both probes and cross-check that each is *actually* reachable — `ShowEmuList` listing a probe is necessary but not sufficient:
+Two SEGGER J-Links, each SWD-wired to its own XIAO-class board, both attached to the same host/container. The current rig uses two nRF54L15 DKs as J-Link OB probes through their external debug ports, each connected to a XIAO nRF52840 Plus. Confirm both probes and cross-check that each is *actually* reachable — `ShowEmuList` listing a probe is necessary but not sufficient:
 
 ```bash
 printf 'ShowEmuList\nExit\n' > /tmp/jlink-show-emulators.jlink
@@ -63,14 +63,14 @@ JLinkExe -NoGui 1 -CommandFile /tmp/probe-which-board.jlink
 
 A successful `halt` (not `Cannot connect`) confirms that probe is wired to *some* board; confirm *which* by flashing a build with a distinctive `CONFIG_ZMK_KEYBOARD_NAME` and checking which USB device / BLE advertisement name changes (`lsusb`, `bluetoothctl` — see below).
 
-**Check the identified core type before flashing, not just that `halt` succeeded.** A probe that reports "J-Link OB-nRF5340-..." as its `ProductName` may be a full nRF5340-DK whose SWD lines are still wired to its *own onboard* nRF5340 chip rather than routed out to an external header connected to your XIAO. `halt`/reset can succeed against that onboard chip and look like a normal connection, but flashing an nRF52840 image against it fails partway (`Timeout while preparing target, RAMCode did not respond in time!`) because the actual silicon doesn't match. Confirm the core type explicitly before trusting the connection:
+**Check the identified core type before flashing, not just that `halt` succeeded.** On the current nRF54L15 DK rig, `ShowEmuList` reports `J-Link OB-nRF5340-NordicSemi` for both probes. This is a probe product string, not evidence of which target the external debug port reaches. A DK whose SWD lines still reach its onboard chip can respond to `halt`/reset while an nRF52840 image fails to flash. Confirm the target core and nRF52840 FICR PART explicitly before trusting the connection:
 
 ```bash
-printf 'SelectEmuBySN %s\ndevice nRF52840_xxAA\nsi SWD\nspeed 4000\nr\nExit\n' "<serial>" > /tmp/probe-core-check.jlink
+printf 'SelectEmuBySN %s\ndevice nRF52840_xxAA\nsi SWD\nspeed 1000\nconnect\nmem32 0xE000ED00 1\nmem32 0x10000100 1\nExit\n' "<serial>" > /tmp/probe-core-check.jlink
 JLinkExe -NoGui 1 -CommandFile /tmp/probe-core-check.jlink
 ```
 
-`WARNING: Identified core does not match configuration. (Found: Cortex-M33, Configured: Cortex-M4)` (or "Cortex-M33 identified" instead of "Cortex-M4 identified") means this probe is not actually talking to your nRF52840 XIAO — it's on a Cortex-M33 part (nRF5340/nRF9160-class), most likely the probe's own onboard target. This is a physical wiring/rig configuration issue (e.g. an nRF5340-DK's onboard/external target select jumper not set to external), not something fixable from the container or host LXD config — stop and get the physical SWD wiring checked rather than retrying flashes against it.
+Expected readback is `E000ED00 = 410FC241` (Cortex-M4) and `10000100 = 00052840` (nRF52840). A Cortex-M33 identification means the probe is reaching a different target; check the DK's external debug routing and wiring before flashing. `VTref=3.300V` and `Found SW-DP with ID 0x2BA01477` alone do not establish a usable connection: if `Failed to power up DAP` follows, leave the XIAO powered over USB, power-cycle that DK/J-Link, and retry. This occurred on one of the two probes during the 2026-10-18 rig check; the other passed the register checks and connected through `JLinkGDBServerCLExe`. Do not claim simultaneous debugging until both probes pass.
 
 ## Build Central + Peripheral Firmware
 
