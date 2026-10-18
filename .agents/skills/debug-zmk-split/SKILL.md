@@ -70,7 +70,9 @@ printf 'SelectEmuBySN %s\ndevice nRF52840_xxAA\nsi SWD\nspeed 1000\nconnect\nmem
 JLinkExe -NoGui 1 -CommandFile /tmp/probe-core-check.jlink
 ```
 
-Expected readback is `E000ED00 = 410FC241` (Cortex-M4) and `10000100 = 00052840` (nRF52840). A Cortex-M33 identification means the probe is reaching a different target; check the DK's external debug routing and wiring before flashing. `VTref=3.300V` and `Found SW-DP with ID 0x2BA01477` alone do not establish a usable connection: if `Failed to power up DAP` follows, leave the XIAO powered over USB, power-cycle that DK/J-Link, and retry. This occurred on one of the two probes during the 2026-10-18 rig check; the other passed the register checks and connected through `JLinkGDBServerCLExe`. Do not claim simultaneous debugging until both probes pass.
+Expected readback is `E000ED00 = 410FC241` (Cortex-M4) and `10000100 = 00052840` (nRF52840). A Cortex-M33 identification means the probe is reaching a different target; check the DK's external debug routing and wiring before flashing. `VTref=3.300V` and `Found SW-DP with ID 0x2BA01477` alone do not establish a usable connection: if `Failed to power up DAP` follows, leave the XIAO powered over USB, power-cycle that DK/J-Link, and retry. This restored the failed probe during the 2026-10-18 rig check. Both probes then read the expected target registers, and two `JLinkGDBServerCLExe` instances connected to their respective targets at the same time using separate port sets. This verifies dual SWD debug connectivity, not flashing or split pairing.
+
+After a DK power cycle, its raw USB device may work while its `/dev/zmk-hp-jlink-*` nodes are temporarily absent. In that case `hw-lock list` omits the probe; acquire its known `jlink-<serial>` lock explicitly before J-Link commands, and repair the host's per-interface device reconciliation if the nodes do not return.
 
 ## Build Central + Peripheral Firmware
 

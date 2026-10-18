@@ -119,8 +119,16 @@ than re-debugging from scratch:
   `0x2BA01477` but repeatedly failed with `Failed to power up DAP`, including
   after an automatic J-Link OB firmware update. With the XIAO powered over
   USB, power-cycle that DK/J-Link and retry before investigating SWD wiring.
-  Two-board simultaneous debugging remains unverified until both probes can
-  connect. Keep session-specific serial numbers and logs under `docs/local/`.
+  After the DK was power-cycled, both probes read the expected Cortex-M4 CPUID
+  and nRF52840 PART. Two GDB servers then connected to their respective
+  targets at the same time on separate port sets. This verifies simultaneous
+  SWD debug connectivity; firmware flashing, GDB client commands, and split
+  behavior were not tested in this rig check. Keep session-specific serial
+  numbers and logs under `docs/local/`.
+- After that power cycle, the probe's raw USB node returned and J-Link worked,
+  but its `/dev/zmk-hp-jlink-*` nodes were absent. `hw-lock list` therefore
+  missed that probe. Lock its known `jlink-<serial>` resource explicitly until
+  the host's per-interface device reconciliation has recreated those nodes.
 
 For the full agent-oriented workflows (build, flash, Studio RPC, GDB/RTT,
 two-board split debugging), see the
