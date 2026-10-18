@@ -93,13 +93,13 @@ These are particular to the physical units in this rig (not general LXC/ZMK
 knowledge), and are the kind of thing worth re-discovering quickly rather
 than re-debugging from scratch:
 
-- One of the two XIAO units has a flash layout quirk where a stock
-  `xiao_ble` build linked at the normal application partition offset never
-  boots (deterministic HardFault at reset). Debug builds for that unit need
-  a devicetree overlay overriding the code partition to start at `0x0`
-  instead. See
+- A previous setup of one XIAO needed a diagnostic `code_partition` overlay
+  at `0x0` after a normal `xiao_ble` build HardFaulted. On 2026-10-18 both
+  current units booted a normal application linked at `0x27000` with their
+  MBR, SoftDevice, bootloader, and UICR intact. Use the normal application
+  partition first; the old overlay is documented in
   [`.agents/skills/develop-zmk-module/references/hardware-rig.md`](../.agents/skills/develop-zmk-module/references/hardware-rig.md)
-  for the exact overlay.
+  for historical debugging.
 - A J-Link probe that has never been connected to from this host's SEGGER
   tools before may perform a one-time firmware update on first connect,
   during which it looks unreachable/re-enumerates under a different USB
@@ -121,14 +121,25 @@ than re-debugging from scratch:
   USB, power-cycle that DK/J-Link and retry before investigating SWD wiring.
   After the DK was power-cycled, both probes read the expected Cortex-M4 CPUID
   and nRF52840 PART. Two GDB servers then connected to their respective
-  targets at the same time on separate port sets. This verifies simultaneous
-  SWD debug connectivity; firmware flashing, GDB client commands, and split
-  behavior were not tested in this rig check. Keep session-specific serial
-  numbers and logs under `docs/local/`.
+  targets at the same time on separate port sets. GDB client commands and
+  split behavior were not tested in that connectivity check.
+- A subsequent 2026-10-18 flash check backed up both complete 1 MiB flash
+  images and UICR, then built `custom_settings_board_with_rpc` for
+  `xiao_ble//zmk` with `tester_xiao` and `studio-rpc-usb-uart`. Its HEX only
+  covered `0x27000–0x64d0c`. Both J-Links programmed and verified that app;
+  both boards enumerated over USB and answered Studio `get_device_info`.
+  A `CONFIG_ZMK_SETTINGS_RESET_ON_START=y` build ran once on each board to
+  clear saved ZMK settings, followed by the ordinary build, which remains
+  installed. This validates application flashing and independent Studio RPC,
+  but not split BLE pairing. Keep the build identity and private backups under
+  `docs/local/`.
 - After that power cycle, the probe's raw USB node returned and J-Link worked,
   but its `/dev/zmk-hp-jlink-*` nodes were absent. `hw-lock list` therefore
   missed that probe. Lock its known `jlink-<serial>` resource explicitly until
   the host's per-interface device reconciliation has recreated those nodes.
+  The flash check also found only one `/dev/zmk-hp-zmk-tty-*` node for two
+  enumerated XIAOs, and writes to that node timed out. The `pyusb` Studio
+  transport reached both boards through raw USB by selecting each USB serial.
 
 For the full agent-oriented workflows (build, flash, Studio RPC, GDB/RTT,
 two-board split debugging), see the

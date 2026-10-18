@@ -102,12 +102,21 @@ class PyUSBCDCTransport:
 
         self._usb = usb.core
         self._usb_util = usb.util
-        self._dev = usb.core.find(idVendor=self.vid, idProduct=self.pid)
+        if self.serial_number:
+            self._dev = next(
+                (
+                    dev
+                    for dev in usb.core.find(find_all=True, idVendor=self.vid, idProduct=self.pid)
+                    if dev.serial_number == self.serial_number
+                ),
+                None,
+            )
+        else:
+            self._dev = usb.core.find(idVendor=self.vid, idProduct=self.pid)
         if self._dev is None:
-            raise RuntimeError(f"USB device not found: {self.vid:04x}:{self.pid:04x}")
-        if self.serial_number and self._dev.serial_number != self.serial_number:
             raise RuntimeError(
-                f"USB serial mismatch: expected {self.serial_number}, got {self._dev.serial_number}"
+                f"USB device not found: {self.vid:04x}:{self.pid:04x}"
+                + (f" serial {self.serial_number}" if self.serial_number else "")
             )
 
         config = self._dev.get_active_configuration()

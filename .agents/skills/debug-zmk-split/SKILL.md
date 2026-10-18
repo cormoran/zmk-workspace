@@ -61,7 +61,7 @@ printf 'SelectEmuBySN %s\ndevice nRF52840_xxAA\nsi SWD\nspeed 4000\nhalt\nr0\nEx
 JLinkExe -NoGui 1 -CommandFile /tmp/probe-which-board.jlink
 ```
 
-A successful `halt` (not `Cannot connect`) confirms that probe is wired to *some* board; confirm *which* by flashing a build with a distinctive `CONFIG_ZMK_KEYBOARD_NAME` and checking which USB device / BLE advertisement name changes (`lsusb`, `bluetoothctl` — see below).
+A successful `halt` (not `Cannot connect`) confirms that probe is wired to *some* board; use the FICR DEVICEID check below to identify *which* USB board it reaches.
 
 **Check the identified core type before flashing, not just that `halt` succeeded.** On the current nRF54L15 DK rig, `ShowEmuList` reports `J-Link OB-nRF5340-NordicSemi` for both probes. This is a probe product string, not evidence of which target the external debug port reaches. A DK whose SWD lines still reach its onboard chip can respond to `halt`/reset while an nRF52840 image fails to flash. Confirm the target core and nRF52840 FICR PART explicitly before trusting the connection:
 
@@ -70,7 +70,9 @@ printf 'SelectEmuBySN %s\ndevice nRF52840_xxAA\nsi SWD\nspeed 1000\nconnect\nmem
 JLinkExe -NoGui 1 -CommandFile /tmp/probe-core-check.jlink
 ```
 
-Expected readback is `E000ED00 = 410FC241` (Cortex-M4) and `10000100 = 00052840` (nRF52840). A Cortex-M33 identification means the probe is reaching a different target; check the DK's external debug routing and wiring before flashing. `VTref=3.300V` and `Found SW-DP with ID 0x2BA01477` alone do not establish a usable connection: if `Failed to power up DAP` follows, leave the XIAO powered over USB, power-cycle that DK/J-Link, and retry. This restored the failed probe during the 2026-10-18 rig check. Both probes then read the expected target registers, and two `JLinkGDBServerCLExe` instances connected to their respective targets at the same time using separate port sets. This verifies dual SWD debug connectivity, not flashing or split pairing.
+Expected readback is `E000ED00 = 410FC241` (Cortex-M4) and `10000100 = 00052840` (nRF52840). A Cortex-M33 identification means the probe is reaching a different target; check the DK's external debug routing and wiring before flashing. `VTref=3.300V` and `Found SW-DP with ID 0x2BA01477` alone do not establish a usable connection: if `Failed to power up DAP` follows, leave the XIAO powered over USB, power-cycle that DK/J-Link, and retry. This restored the failed probe during the 2026-10-18 rig check. Both probes then read the expected target registers, and two `JLinkGDBServerCLExe` instances connected to their respective targets at the same time using separate port sets. Application flashing on both targets was verified later that day; split pairing remains untested on the new rig.
+
+To map a probe to a USB board without changing firmware, read nRF52840 FICR DEVICEID with `mem32 0x10000060 2`. The ZMK USB serial is the two 32-bit words rendered as `[1][0]` in hexadecimal. Confirm the match against each enumerated USB device's serial before assigning roles.
 
 After a DK power cycle, its raw USB device may work while its `/dev/zmk-hp-jlink-*` nodes are temporarily absent. In that case `hw-lock list` omits the probe; acquire its known `jlink-<serial>` lock explicitly before J-Link commands, and repair the host's per-interface device reconciliation if the nodes do not return.
 
@@ -126,7 +128,16 @@ EOF
 JLinkExe -NoGui 1 -CommandFile /tmp/flash-central.jlink
 ```
 
-Never `erase` (removes the UF2 bootloader region). If a board HardFaults at reset with `PC = 0` after flashing (no USB enumeration), that unit's flash partition table needs the `CONFIG_FLASH_LOAD_OFFSET` workaround from `$develop-zmk-module`'s `references/hardware-rig.md` — a plain `-DCONFIG_FLASH_LOAD_OFFSET=0x0` cmake arg does **not** fix it on this board family; you need the devicetree `code_partition` override documented there, passed via `-DEXTRA_DTC_OVERLAY_FILE`.
+Never use an unqualified `erase` (it can remove the UF2 bootloader region). Before `loadfile`, confirm that the HEX records are confined to the normal application partition (`0x27000–0xEBFFF`), and preserve flash/UICR backups as described in `$debug-zmk-jlink`'s `references/xiao-nrf52840-recovery.md`. Both current XIAOs booted a normal `0x27000` ZMK application after J-Link flashing on 2026-10-18. If a future image HardFaults, inspect the boot chain and build partition first; the old `code_partition`-at-`0x0` overlay is only a diagnostic workaround.
+
+If both USB devices enumerate but `/dev/zmk-hp-zmk-tty-*` is missing for one or writes to it time out, use Studio RPC via raw USB and select the board by its USB serial:
+
+```bash
+PYTHONPATH=tools tools/zmk-studio-rpc --workspace "$ZMK_WORKSPACE" \
+  --transport pyusb --usb-serial <board-usb-serial> info
+```
+
+The 2026-10-18 check got `get_device_info` replies from both boards this way; see `docs/hardware-rig.md`. This is a host pass-through issue, not evidence of a failed flash.
 
 ## Verify Pairing (the actual "does split work" check)
 

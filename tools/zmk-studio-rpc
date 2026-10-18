@@ -25,6 +25,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ble-address", help="BLE device address")
     parser.add_argument("--usb-vid", default="0x1d50")
     parser.add_argument("--usb-pid", default="0x615e")
+    parser.add_argument("--usb-serial", help="USB device serial for pyusb when multiple boards are attached")
     parser.add_argument("--usb-data-interface", type=int)
     parser.add_argument("--timeout", type=float, default=5.0)
 
@@ -100,6 +101,7 @@ def build_transport(args: argparse.Namespace):
             vid=int(str(args.usb_vid), 0),
             pid=int(str(args.usb_pid), 0),
             data_interface=args.usb_data_interface,
+            serial_number=args.usb_serial,
         )
     if not args.ble_address:
         raise SystemExit("--ble-address is required for --transport ble")
